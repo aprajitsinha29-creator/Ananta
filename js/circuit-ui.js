@@ -738,6 +738,9 @@ class CircuitUI {
     if (this.qasmCodeBlock) {
       this.qasmCodeBlock.textContent = this.engine.toQASM(this.grid);
     }
+    if (window.updateFrameworkExport) {
+      window.updateFrameworkExport();
+    }
 
 
     // Check gamified missions

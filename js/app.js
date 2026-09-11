@@ -959,6 +959,8 @@ document.addEventListener('DOMContentLoaded', () => {
     exportCodeEl.textContent = code;
   }
 
+  window.updateFrameworkExport = updateExportCode;
+
   exportTabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       exportTabBtns.forEach(b => b.classList.remove('active'));

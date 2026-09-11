@@ -15,6 +15,7 @@ class TranspilerDoctor {
     this.optimizedAST = []; // Optimized canonical AST
     this.cancellations = [];
     this.merges = [];
+    this.parseMessage = '';
     this.explainerLevel = 'simple'; // 'simple' (Plain English) or 'deep' (Hardware Physics)
 
     this.initElements();
@@ -237,7 +238,10 @@ class TranspilerDoctor {
 
       if (isOpt) {
         this.statusPillEl.className = 'transpiler-status-pill optimized';
-        if (diff > 0) {
+        if (this.parseMessage) {
+          this.statusPillEl.className = 'transpiler-status-pill direct';
+          this.statusPillEl.innerHTML = `⚠️ <strong>Source not recognized:</strong> ${this.parseMessage}`;
+        } else if (diff > 0) {
           this.statusPillEl.innerHTML = `⚡ <strong>AI Circuit Doctor Active:</strong> ${diff} redundant gates eliminated (${rawCount} → ${optCount} gates). Showing optimized circuit.`;
         } else {
           this.statusPillEl.innerHTML = `✨ <strong>AI Circuit Doctor Active:</strong> Circuit is already maximally compressed (${optCount} gates).`;
@@ -280,7 +284,11 @@ class TranspilerDoctor {
   // Robust multi-framework parser (Qiskit, Cirq, OpenQASM, Braket, PennyLane, PyQuil)
   parseSourceCode() {
     const text = this.sourceCodeArea ? this.sourceCodeArea.value : '';
-    if (!text.trim()) return this.circuitAST;
+    this.parseMessage = '';
+    if (!text.trim()) {
+      this.circuitAST = [];
+      return this.circuitAST;
+    }
 
     const lines = text.split('\n');
     const parsed = [];
@@ -303,7 +311,7 @@ class TranspilerDoctor {
       if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//') || trimmed.startsWith('/*')) return;
 
       // 1. Qiskit: qc.h(0), qc.cx(0, 1), qc.rz(0.785, 0), qc.swap(0, 1)
-      const qiskitMatch = trimmed.match(/qc\.([a-zA-Z0-9_]+)\(([^)]*)\)/i);
+      const qiskitMatch = trimmed.match(/(?:qc|circuit)\.([a-zA-Z0-9_]+)\(([^)]*)\)/i);
       if (qiskitMatch) {
         const op = qiskitMatch[1].toUpperCase();
         const rawArgs = qiskitMatch[2].split(',').map(s => s.trim()).filter(Boolean);
@@ -380,7 +388,7 @@ class TranspilerDoctor {
       }
 
       // 4. Amazon Braket: circ.h(0), circ.cnot(0, 1), circ.rz(0, 0.785)
-      const braketMatch = trimmed.match(/circ\.([a-zA-Z0-9_]+)\(([^)]*)\)/i);
+      const braketMatch = trimmed.match(/(?:circ|circuit)\.([a-zA-Z0-9_]+)\(([^)]*)\)/i);
       if (braketMatch) {
         const op = braketMatch[1].toUpperCase();
         const rawArgs = braketMatch[2].split(',').map(s => s.trim()).filter(Boolean);
@@ -393,7 +401,7 @@ class TranspilerDoctor {
           const q0 = parseInt(rawArgs[0], 10);
           const q1 = parseInt(rawArgs[1], 10);
           if (Number.isFinite(q0) && Number.isFinite(q1)) {
-            parsed.push({ gate: (op === 'CX' ? 'CNOT' : op), qubits: [q0, q1], params: [] });
+            parsed.push({ gate: (op === 'CX' || op === 'CNOT' ? 'CNOT' : op), qubits: [q0, q1], params: [] });
           }
           return;
         }
@@ -466,6 +474,9 @@ class TranspilerDoctor {
 
     if (parsed.length > 0) {
       this.circuitAST = parsed;
+    } else {
+      this.circuitAST = [];
+      this.parseMessage = 'Enter supported gate operations such as qc.h(0), qc.cx(0, 1), or h q[0];';
     }
     return this.circuitAST;
   }
