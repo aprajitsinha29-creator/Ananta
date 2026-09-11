@@ -9,6 +9,7 @@
   window.ANANTA_CONFIG = {
     GEMINI_API_KEY: (typeof localStorage !== 'undefined' && localStorage.getItem('ananta_gemini_key')) || '',
     OPENAI_API_KEY: '',
-    DEFAULT_PROVIDER: 'gemini'
+    DEFAULT_PROVIDER: 'gemini',
+    GROQ_API_KEY: 'my groq api key' // Add your Groq API key here for local testing only.
   };
 })();

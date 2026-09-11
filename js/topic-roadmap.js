@@ -40,6 +40,7 @@ class TopicRoadmapManager {
         summary: 'Learn single-qubit rotations (H, X, Y, Z, S, T) and multi-qubit Kronecker expansions that preserve quantum norm.',
         researchPaper: 'Nielsen & Chuang, Quantum Computation & Quantum Information (2010)',
         circuitPreset: 'superposition',
+        expectedOutput: { states: { '|000⟩': 0.5, '|100⟩': 0.5 }, tolerance: 0.12 },
         mathFormula: 'U · U† = I,   |+⟩ = H|0⟩ = (|0⟩ + |1⟩)/√2',
         intuition: 'Every quantum gate is a reversible rotation in Hilbert space. Applying H puts the qubit into equal superposition.',
         exerciseGoal: 'Arm the Hadamard (H) gate and place it on Qubit 0. Observe measurement probabilities become 50% for |0⟩ and 50% for |1⟩.'
@@ -69,6 +70,7 @@ class TopicRoadmapManager {
         summary: 'Calculate expectation values ⟨Z⟩, ⟨X⟩, ⟨Y⟩ from physical projective measurements and density matrices.',
         researchPaper: 'Pauli, Z. Phys. 43, 601 (1927)',
         circuitPreset: 'superposition',
+        expectedOutput: { states: { '|000⟩': 0.5, '|100⟩': 0.5 }, tolerance: 0.12 },
         mathFormula: '⟨O⟩ = ⟨ψ|O|ψ⟩ = Tr(ρ O),   ⟨Z⟩ = P(0) - P(1)',
         intuition: 'Pauli observables quantify the projection of the quantum state along the Bloch sphere coordinate axes.',
         exerciseGoal: 'Switch on Pauli Observables on the left panel to watch ⟨Z⟩ drop to 0 and ⟨X⟩ rise to +1 when H is applied.'
@@ -98,6 +100,7 @@ class TopicRoadmapManager {
         summary: 'Master syntax translation between Python SDKs (Cirq, Qiskit, Braket) and standard hardware assembly languages.',
         researchPaper: 'Cross et al., OpenQASM 3.0 Spec, ACM TOCS (2022)',
         circuitPreset: 'bell',
+        expectedOutput: { states: { '|000⟩': 0.5, '|110⟩': 0.5 }, tolerance: 0.12 },
         mathFormula: 'OPENQASM 3.0; qubit[2] q; h q[0]; cx q[0], q[1];',
         intuition: 'Transpilers map mathematical unitary matrices into hardware-native pulse sequences and gate topologies.',
         exerciseGoal: 'Synthesize a 2-qubit circuit and inspect the generated Cirq / QASM code export.'
@@ -113,6 +116,7 @@ class TopicRoadmapManager {
         summary: 'Construct the four maximally entangled Einstein-Podolsky-Rosen (EPR) Bell states and measure entanglement entropy.',
         researchPaper: 'Einstein, Podolsky, Rosen (1935) / J. S. Bell, Physics 1 (1964)',
         circuitPreset: 'bell',
+        expectedOutput: { states: { '|000⟩': 0.5, '|110⟩': 0.5 }, tolerance: 0.12 },
         mathFormula: '|Φ⁺⟩ = (|00⟩ + |11⟩)/√2,   S(ρ_A) = 1.000 ebit',
         intuition: 'Entangled qubits exhibit correlations that cannot be explained by any local classical variables, violating Bell inequalities.',
         exerciseGoal: 'Place an H gate on Qubit 0 followed by a CNOT (control on q0, target on q1) to generate the |Φ⁺⟩ Bell pair.'
@@ -128,6 +132,7 @@ class TopicRoadmapManager {
         summary: 'Transmit an unknown quantum state using a pre-shared Bell pair, Bell-state measurement, and 2 classical bits.',
         researchPaper: 'Bennett, Brassard, Crépeau, Jozsa, Peres, Wootters, PRL 70 (1993)',
         circuitPreset: 'teleport',
+        expectedOutput: { states: { '|000⟩': 0.25, '|001⟩': 0.25, '|010⟩': 0.25, '|011⟩': 0.25 }, tolerance: 0.15 },
         mathFormula: '|ψ⟩ ⊗ |Φ⁺⟩ → Bell Measurement → Pauli Correction (X^b Z^a)',
         intuition: 'Information is transferred without moving physical matter, respecting the No-Cloning theorem because the source state is destroyed.',
         exerciseGoal: 'Load the Teleportation preset in the circuit designer to trace amplitude transfer from q0 to q2.'
@@ -143,6 +148,7 @@ class TopicRoadmapManager {
         summary: 'Achieve quadratic speedup O(√N) for unstructured database search using phase oracles and diffusion inversion.',
         researchPaper: 'L. K. Grover, STOC \'96 (1996) / Phys. Rev. Lett. 79 (1997)',
         circuitPreset: 'grover',
+        expectedOutput: { states: { '|110⟩': 1.0 }, tolerance: 0.2 },
         mathFormula: 'G = (2|ψ⟩⟨ψ| - I) · O_f,   Iterations ≈ (π/4)√N',
         intuition: 'By inverting target states around the average mean amplitude, the probability of measuring the correct answer surges toward 100%.',
         exerciseGoal: 'Observe the Grover diffusion operator amplify the marked basis state in the probability distribution.'
@@ -1509,6 +1515,7 @@ class TopicRoadmapManager {
       || (this.generatedModules || []).find(m => m.id === moduleId);
     if (!mod) return;
     this.activeModule = mod;
+    if (window.aiDoctorManager) window.aiDoctorManager.attach(mod);
 
     const detailStage = document.getElementById('topic-module-detail-stage');
     const resultsStage = document.getElementById('topic-roadmap-results');
@@ -1655,6 +1662,20 @@ class TopicRoadmapManager {
     dockTarget.appendChild(simCol);
     this.isDockedInSplit = true;
 
+    const stepperControls = simCol.querySelector('.stepper-controls-group');
+    if (stepperControls && !document.getElementById('topic-lab-run-calc')) {
+      const runButton = document.createElement('button');
+      runButton.type = 'button';
+      runButton.id = 'topic-lab-run-calc';
+      runButton.className = 'topic-lab-run-btn';
+      runButton.title = 'Run the circuit and check the exercise output with AI Doctor';
+      runButton.textContent = 'Run Simulation ⚡';
+      runButton.addEventListener('click', () => {
+        if (window.circuitUI) window.circuitUI.runInteractiveSimulation();
+      });
+      stepperControls.appendChild(runButton);
+    }
+
     // Load matching exercise preset
     if (presetKey && typeof window !== 'undefined') {
       if (window.loadPresetSafe) {
@@ -1672,6 +1693,8 @@ class TopicRoadmapManager {
     const simCol = document.querySelector('.reader-lab-column .studio-two-col') || document.querySelector('#topic-lab-dock-target .studio-two-col');
     
     if (simContainer && simCol) {
+      const moduleRunButton = simCol.querySelector('#topic-lab-run-calc');
+      if (moduleRunButton) moduleRunButton.remove();
       // Re-insert right before analytics deck or at original location
       const analyticsDeck = document.querySelector('#view-simulator .composer-analytics-deck') || document.querySelector('#view-simulator .studio-analytics-deck');
       if (analyticsDeck && analyticsDeck.parentNode === simContainer) {
@@ -1709,6 +1732,7 @@ class TopicRoadmapManager {
       detailStage.style.display = 'none';
       detailStage.innerHTML = '';
     }
+    if (window.aiDoctorManager) window.aiDoctorManager.detach();
     this.activeModule = null;
   }
 

@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
     topicRoadmapManager = new window.TopicRoadmapManager();
     window.topicRoadmapManager = topicRoadmapManager;
   }
+  if (window.AIDoctorManager) window.aiDoctorManager = new AIDoctorManager();
 
   // ── Quantum Hardware & Security Studios ─────────────────────
   let quantumDebugger = null;

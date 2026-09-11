@@ -253,7 +253,7 @@ class CircuitUI {
   }
 
   runInteractiveSimulation() {
-    const btn = document.getElementById('btn-run-calc');
+    const btn = document.getElementById('topic-lab-run-calc') || document.getElementById('btn-run-calc');
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = '⚡ Simulating Wavefunction...';
@@ -279,6 +279,7 @@ class CircuitUI {
 
     setTimeout(() => {
       this.updateSimulation();
+      if (window.aiDoctorManager) window.aiDoctorManager.onCircuitRun(this.engine.getProbabilities(), this.grid);
       if (btn) {
         btn.innerHTML = '✓ Simulation Complete (100% Fidelity)';
         btn.classList.remove('sim-active');
