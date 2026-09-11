@@ -156,6 +156,40 @@ class QuantumCircuitEngine {
     this.state = newState;
   }
 
+  // Apply SWAP: exchanges the amplitudes of the two qubits' basis values.
+  applySWAP(qubitA, qubitB) {
+    if (qubitA === qubitB) return;
+    const newState = new Array(this.numStates);
+    const maskA = 1 << (this.numQubits - 1 - qubitA);
+    const maskB = 1 << (this.numQubits - 1 - qubitB);
+
+    for (let i = 0; i < this.numStates; i++) {
+      const bitA = (i & maskA) ? 1 : 0;
+      const bitB = (i & maskB) ? 1 : 0;
+      const j = bitA === bitB ? i : (i ^ maskA ^ maskB);
+      newState[j] = this.state[i];
+    }
+    this.state = newState;
+  }
+
+  // Apply Toffoli (CCX): flips the target only when BOTH controls are |1>.
+  // A Toffoli with only one control detected applied is not the same gate as
+  // a CNOT and must not silently collapse into one.
+  applyToffoli(controlA, controlB, targetQubit) {
+    if (controlA === controlB || controlA === targetQubit || controlB === targetQubit) return;
+    const newState = Array.from({ length: this.numStates }, () => new Complex(0, 0));
+    const maskA = 1 << (this.numQubits - 1 - controlA);
+    const maskB = 1 << (this.numQubits - 1 - controlB);
+    const maskT = 1 << (this.numQubits - 1 - targetQubit);
+
+    for (let i = 0; i < this.numStates; i++) {
+      const bothOne = (i & maskA) !== 0 && (i & maskB) !== 0;
+      const dest = bothOne ? (i ^ maskT) : i;
+      newState[dest] = this.state[i];
+    }
+    this.state = newState;
+  }
+
   // Run circuit up to a specific time-step column (-1 for full circuit)
   runCircuitUpToCol(grid, upToCol = -1) {
     this.reset();
@@ -165,22 +199,32 @@ class QuantumCircuitEngine {
     const limit = upToCol === -1 ? maxCols : Math.min(upToCol + 1, maxCols);
 
     for (let col = 0; col < limit; col++) {
+      const controls = [];
       let cnotTarget = -1;
-      let cnotControl = -1;
+      const swapWires = [];
 
       for (let q = 0; q < this.numQubits; q++) {
         const cell = grid[q][col];
-        if (cell === 'CX_CTRL') cnotControl = q;
-        if (cell === 'CX_TGT') cnotTarget = q;
+        if (cell === 'CX_CTRL') controls.push(q);
+        else if (cell === 'CX_TGT') cnotTarget = q;
+        else if (cell === 'SWAP') swapWires.push(q);
       }
 
-      if (cnotControl !== -1 && cnotTarget !== -1) {
-        this.applyCNOT(cnotControl, cnotTarget);
+      // Two controls sharing a target is a Toffoli, not a CNOT — collapsing
+      // it to single-control was silently simulating the wrong gate.
+      if (controls.length === 2 && cnotTarget !== -1) {
+        this.applyToffoli(controls[0], controls[1], cnotTarget);
+      } else if (controls.length === 1 && cnotTarget !== -1) {
+        this.applyCNOT(controls[0], cnotTarget);
+      }
+
+      if (swapWires.length === 2) {
+        this.applySWAP(swapWires[0], swapWires[1]);
       }
 
       for (let q = 0; q < this.numQubits; q++) {
         const cell = grid[q][col];
-        if (cell && cell !== 'CX_CTRL' && cell !== 'CX_TGT' && cell !== 'M') {
+        if (cell && cell !== 'CX_CTRL' && cell !== 'CX_TGT' && cell !== 'SWAP' && cell !== 'M') {
           this.apply1QGate(cell, q);
         }
       }
@@ -399,18 +443,28 @@ circuit = cirq.Circuit()
     const numCols = grid[0].length;
     let hasOps = false;
     for (let col = 0; col < numCols; col++) {
-      let cnotControl = -1, cnotTarget = -1;
+      const controls = [], swapWires = [];
+      let cnotTarget = -1;
       for (let q = 0; q < this.numQubits; q++) {
-        if (grid[q][col] === 'CX_CTRL') cnotControl = q;
-        if (grid[q][col] === 'CX_TGT') cnotTarget = q;
+        const c = grid[q][col];
+        if (c === 'CX_CTRL') controls.push(q);
+        else if (c === 'CX_TGT') cnotTarget = q;
+        else if (c === 'SWAP') swapWires.push(q);
       }
-      if (cnotControl !== -1 && cnotTarget !== -1) {
-        py += `circuit.append(cirq.CNOT(qubits[${cnotControl}], qubits[${cnotTarget}]))\n`;
+      if (controls.length === 2 && cnotTarget !== -1) {
+        py += `circuit.append(cirq.TOFFOLI(qubits[${controls[0]}], qubits[${controls[1]}], qubits[${cnotTarget}]))\n`;
+        hasOps = true;
+      } else if (controls.length === 1 && cnotTarget !== -1) {
+        py += `circuit.append(cirq.CNOT(qubits[${controls[0]}], qubits[${cnotTarget}]))\n`;
+        hasOps = true;
+      }
+      if (swapWires.length === 2) {
+        py += `circuit.append(cirq.SWAP(qubits[${swapWires[0]}], qubits[${swapWires[1]}]))\n`;
         hasOps = true;
       }
       for (let q = 0; q < this.numQubits; q++) {
         const gate = grid[q][col];
-        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT') continue;
+        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT' || gate === 'SWAP') continue;
         if (gate === 'H') { py += `circuit.append(cirq.H(qubits[${q}]))\n`; hasOps = true; }
         else if (gate === 'X') { py += `circuit.append(cirq.X(qubits[${q}]))\n`; hasOps = true; }
         else if (gate === 'Y') { py += `circuit.append(cirq.Y(qubits[${q}]))\n`; hasOps = true; }
@@ -453,17 +507,25 @@ qc = QuantumCircuit(${this.numQubits}, ${this.numQubits})
 `;
     const numCols = grid[0].length;
     for (let col = 0; col < numCols; col++) {
-      let cnotControl = -1, cnotTarget = -1;
+      const controls = [], swapWires = [];
+      let cnotTarget = -1;
       for (let q = 0; q < this.numQubits; q++) {
-        if (grid[q][col] === 'CX_CTRL') cnotControl = q;
-        if (grid[q][col] === 'CX_TGT') cnotTarget = q;
+        const c = grid[q][col];
+        if (c === 'CX_CTRL') controls.push(q);
+        else if (c === 'CX_TGT') cnotTarget = q;
+        else if (c === 'SWAP') swapWires.push(q);
       }
-      if (cnotControl !== -1 && cnotTarget !== -1) {
-        py += `qc.cx(${cnotControl}, ${cnotTarget})\n`;
+      if (controls.length === 2 && cnotTarget !== -1) {
+        py += `qc.ccx(${controls[0]}, ${controls[1]}, ${cnotTarget})\n`;
+      } else if (controls.length === 1 && cnotTarget !== -1) {
+        py += `qc.cx(${controls[0]}, ${cnotTarget})\n`;
+      }
+      if (swapWires.length === 2) {
+        py += `qc.swap(${swapWires[0]}, ${swapWires[1]})\n`;
       }
       for (let q = 0; q < this.numQubits; q++) {
         const gate = grid[q][col];
-        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT') continue;
+        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT' || gate === 'SWAP') continue;
         if (gate === 'M') {
           py += `qc.measure(${q}, ${q})\n`;
         } else {
@@ -489,17 +551,25 @@ print(qc.draw('text'))
     let qasm = `// Generated by Ananta Quantum Studio\nOPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[${this.numQubits}];\ncreg c[${this.numQubits}];\n\n`;
     const numCols = grid[0].length;
     for (let col = 0; col < numCols; col++) {
-      let cnotControl = -1, cnotTarget = -1;
+      const controls = [], swapWires = [];
+      let cnotTarget = -1;
       for (let q = 0; q < this.numQubits; q++) {
-        if (grid[q][col] === 'CX_CTRL') cnotControl = q;
-        if (grid[q][col] === 'CX_TGT') cnotTarget = q;
+        const c = grid[q][col];
+        if (c === 'CX_CTRL') controls.push(q);
+        else if (c === 'CX_TGT') cnotTarget = q;
+        else if (c === 'SWAP') swapWires.push(q);
       }
-      if (cnotControl !== -1 && cnotTarget !== -1) {
-        qasm += `cx q[${cnotControl}], q[${cnotTarget}];\n`;
+      if (controls.length === 2 && cnotTarget !== -1) {
+        qasm += `ccx q[${controls[0]}], q[${controls[1]}], q[${cnotTarget}];\n`;
+      } else if (controls.length === 1 && cnotTarget !== -1) {
+        qasm += `cx q[${controls[0]}], q[${cnotTarget}];\n`;
+      }
+      if (swapWires.length === 2) {
+        qasm += `swap q[${swapWires[0]}], q[${swapWires[1]}];\n`;
       }
       for (let q = 0; q < this.numQubits; q++) {
         const gate = grid[q][col];
-        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT') continue;
+        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT' || gate === 'SWAP') continue;
         if (gate === 'M') {
           qasm += `measure q[${q}] -> c[${q}];\n`;
         } else {
@@ -526,18 +596,28 @@ def circuit():
     const numCols = grid[0].length;
     let hasOps = false;
     for (let col = 0; col < numCols; col++) {
-      let cnotControl = -1, cnotTarget = -1;
+      const controls = [], swapWires = [];
+      let cnotTarget = -1;
       for (let q = 0; q < this.numQubits; q++) {
-        if (grid[q][col] === 'CX_CTRL') cnotControl = q;
-        if (grid[q][col] === 'CX_TGT') cnotTarget = q;
+        const c = grid[q][col];
+        if (c === 'CX_CTRL') controls.push(q);
+        else if (c === 'CX_TGT') cnotTarget = q;
+        else if (c === 'SWAP') swapWires.push(q);
       }
-      if (cnotControl !== -1 && cnotTarget !== -1) {
-        py += `    qml.CNOT(wires=[${cnotControl}, ${cnotTarget}])\n`;
+      if (controls.length === 2 && cnotTarget !== -1) {
+        py += `    qml.Toffoli(wires=[${controls[0]}, ${controls[1]}, ${cnotTarget}])\n`;
+        hasOps = true;
+      } else if (controls.length === 1 && cnotTarget !== -1) {
+        py += `    qml.CNOT(wires=[${controls[0]}, ${cnotTarget}])\n`;
+        hasOps = true;
+      }
+      if (swapWires.length === 2) {
+        py += `    qml.SWAP(wires=[${swapWires[0]}, ${swapWires[1]}])\n`;
         hasOps = true;
       }
       for (let q = 0; q < this.numQubits; q++) {
         const gate = grid[q][col];
-        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT') continue;
+        if (!gate || gate === 'CX_CTRL' || gate === 'CX_TGT' || gate === 'SWAP') continue;
         if (gate === 'H') { py += `    qml.Hadamard(wires=${q})\n`; hasOps = true; }
         else if (gate === 'X') { py += `    qml.PauliX(wires=${q})\n`; hasOps = true; }
         else if (gate === 'Y') { py += `    qml.PauliY(wires=${q})\n`; hasOps = true; }

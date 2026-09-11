@@ -212,12 +212,19 @@ class CircuitUI {
     el.className = `placed-gate gate-chip gate-${cssName}`;
     el.setAttribute('data-gate', gateName);
 
+    // A Toffoli shares its wire tokens with an ordinary CNOT (two CX_CTRL
+    // cells + one CX_TGT in the same column instead of one), so the control
+    // dot is labelled generically — the actual gate identity (CNOT vs
+    // Toffoli) is what the simulator and the AI tutor report, not this glyph.
     if (gateName === 'CX_CTRL') {
       el.className += ' gate-cnot-ctrl';
       el.innerHTML = '<span class="cnot-dot">●</span><span class="gate-sublabel">CTRL</span>';
     } else if (gateName === 'CX_TGT') {
       el.className += ' gate-cnot-tgt';
       el.innerHTML = '<span class="cnot-cross">⊕</span><span class="gate-sublabel">TGT</span>';
+    } else if (gateName === 'SWAP') {
+      el.className += ' gate-swap';
+      el.innerHTML = '<span class="cnot-dot">⤫</span><span class="gate-sublabel">SWAP</span>';
     } else {
       const sublabels = {
         'H': 'Superpos',
@@ -286,10 +293,29 @@ class CircuitUI {
   }
 
   placeGate(gateName, qubit, col, explicitTarget = null) {
+    const touchedWires = [qubit];
+
     if (gateName === 'CX' || gateName === 'CNOT') {
       const targetQubit = explicitTarget !== null ? explicitTarget : (qubit + 1) % this.numQubits;
       this.grid[qubit][col] = 'CX_CTRL';
       this.grid[targetQubit][col] = 'CX_TGT';
+      touchedWires.push(targetQubit);
+    } else if (gateName === 'SWAP') {
+      const otherQubit = explicitTarget !== null ? explicitTarget : (qubit + 1) % this.numQubits;
+      this.grid[qubit][col] = 'SWAP';
+      this.grid[otherQubit][col] = 'SWAP';
+      touchedWires.push(otherQubit);
+    } else if (gateName === 'Toffoli' || gateName === 'CCX') {
+      // A Toffoli needs three distinct wires; grow the register if the click
+      // landed on a circuit that doesn't have two free neighbors yet.
+      while (this.numQubits < 3) this.addQubit();
+      const controlB = (qubit + 1) % this.numQubits;
+      let target = (qubit + 2) % this.numQubits;
+      if (target === controlB) target = (controlB + 1) % this.numQubits;
+      this.grid[qubit][col] = 'CX_CTRL';
+      this.grid[controlB][col] = 'CX_CTRL';
+      this.grid[target][col] = 'CX_TGT';
+      touchedWires.push(controlB, target);
     } else {
       this.grid[qubit][col] = gateName;
     }
@@ -297,20 +323,14 @@ class CircuitUI {
     this.renderGrid();
     this.updateSimulation();
 
-    // Trigger dynamic shockwave burst animation on placed slot
-    const slot1 = document.getElementById(`slot-${qubit}-${col}`);
-    if (slot1) {
-      slot1.classList.add('gate-shockwave');
-      setTimeout(() => slot1.classList.remove('gate-shockwave'), 500);
-    }
-    if (gateName === 'CX' || gateName === 'CNOT') {
-      const targetQubit = explicitTarget !== null ? explicitTarget : (qubit + 1) % this.numQubits;
-      const slot2 = document.getElementById(`slot-${targetQubit}-${col}`);
-      if (slot2) {
-        slot2.classList.add('gate-shockwave');
-        setTimeout(() => slot2.classList.remove('gate-shockwave'), 500);
+    // Trigger dynamic shockwave burst animation on every wire the gate touched
+    touchedWires.forEach(w => {
+      const slot = document.getElementById(`slot-${w}-${col}`);
+      if (slot) {
+        slot.classList.add('gate-shockwave');
+        setTimeout(() => slot.classList.remove('gate-shockwave'), 500);
       }
-    }
+    });
   }
 
   removeGate(qubit, col) {
@@ -776,6 +796,11 @@ class CircuitUI {
     this.updateQuantumIntelligenceDeck();
     this.updatePresetHighlight();
 
+    // Notify AI Circuit Tutor (SIH 26140) of circuit state change
+    if (window.circuitTutor) {
+      window.circuitTutor.onCircuitChanged();
+    }
+
     // Dynamically update Pauli Observables on left sidebar
     if (window._renderPauliGauges) {
       window._renderPauliGauges();
@@ -1056,18 +1081,137 @@ class CircuitUI {
     });
   }
 
+  /**
+   * Pointer-based drag-and-drop for the gate palette.
+   *
+   * Replaces reliance on the browser's native HTML5 Drag and Drop API as the
+   * primary path: native DnD does not fire at all on touch devices, and is
+   * known to be unreliable across browsers for `<button>` elements (drag
+   * gestures silently failing to start is a long-documented cross-browser
+   * quirk, not something fixable by tweaking the native handlers). Pointer
+   * Events fire uniformly for mouse, pen and touch, so this works everywhere
+   * the click-to-arm flow already does, and reuses the exact same
+   * this.placeGate() call so placement behaves identically either way.
+   */
+  bindPointerGateDrag(paletteChips) {
+    const DRAG_THRESHOLD_PX = 6;
+    let dragState = null; // { gate, ghost, pointerId }
+
+    const clearSlotHighlights = () => {
+      document.querySelectorAll('.gate-slot.drag-hover').forEach(s => s.classList.remove('drag-hover'));
+    };
+
+    // Belt-and-braces: if a drag ever ends without pointerup/pointercancel
+    // reaching this handler (an OS-level gesture stealing the pointer stream
+    // mid-drag, the tab losing focus, etc.), the ghost label must not survive
+    // as a permanent floating artifact. Anything that can plausibly signal
+    // "the gesture is over" forces a hard cleanup.
+    const forceEndDrag = () => {
+      document.querySelectorAll('.gate-drag-ghost').forEach(g => g.remove());
+      clearSlotHighlights();
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      dragState = null;
+    };
+    window.addEventListener('blur', forceEndDrag);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) forceEndDrag(); });
+
+    const slotAt = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      return el ? el.closest('.gate-slot') : null;
+    };
+
+    const startGhost = (gate, x, y) => {
+      const ghost = document.createElement('div');
+      ghost.className = 'gate-drag-ghost';
+      ghost.textContent = gate;
+      ghost.style.left = `${x}px`;
+      ghost.style.top = `${y}px`;
+      document.body.appendChild(ghost);
+      return ghost;
+    };
+
+    const onPointerMove = (e) => {
+      if (!dragState || e.pointerId !== dragState.pointerId) return;
+
+      if (!dragState.isDragging) {
+        const dx = e.clientX - dragState.startX;
+        const dy = e.clientY - dragState.startY;
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+        dragState.isDragging = true;
+        dragState.ghost = startGhost(dragState.gate, e.clientX, e.clientY);
+      }
+
+      e.preventDefault();
+      dragState.ghost.style.left = `${e.clientX}px`;
+      dragState.ghost.style.top = `${e.clientY}px`;
+
+      clearSlotHighlights();
+      const slot = slotAt(e.clientX, e.clientY);
+      if (slot) slot.classList.add('drag-hover');
+    };
+
+    const onPointerUp = (e) => {
+      if (!dragState || e.pointerId !== dragState.pointerId) return;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+
+      if (dragState.isDragging) {
+        if (dragState.ghost) dragState.ghost.remove();
+        clearSlotHighlights();
+        const slot = slotAt(e.clientX, e.clientY);
+        if (slot) {
+          const q = parseInt(slot.getAttribute('data-qubit'), 10);
+          const col = parseInt(slot.getAttribute('data-col'), 10);
+          this.placeGate(dragState.gate, q, col);
+        }
+        this._suppressNextChipClick = true;
+        // A real drag gesture is always followed by a click event that
+        // consumes this flag — but guard against it getting stuck true if
+        // that click is ever lost (e.g. a touch sequence ending in
+        // pointercancel instead), which would otherwise silently eat the
+        // next legitimate tap on a gate.
+        clearTimeout(this._suppressClickResetTimer);
+        this._suppressClickResetTimer = setTimeout(() => { this._suppressNextChipClick = false; }, 400);
+      }
+      dragState = null;
+    };
+
+    paletteChips.forEach(chip => {
+      const gate = chip.getAttribute('data-gate');
+      chip.addEventListener('pointerdown', (e) => {
+        if (e.button !== undefined && e.button !== 0) return; // left button / touch only
+        // Self-heal unconditionally: a ghost has no legitimate reason to
+        // exist at the start of a fresh gesture. Checked against dragState
+        // rather than the DOM directly, that guard would only catch the
+        // exact failure modes already anticipated — sweeping the DOM itself
+        // catches any leftover ghost regardless of why it survived.
+        forceEndDrag();
+        dragState = { gate, startX: e.clientX, startY: e.clientY, isDragging: false, pointerId: e.pointerId, ghost: null };
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+        window.addEventListener('pointercancel', onPointerUp);
+      });
+    });
+  }
+
   bindEvents() {
     // Gate Palette drag & click
     const paletteChips = document.querySelectorAll('.gate-btn');
     paletteChips.forEach(chip => {
       const gate = chip.getAttribute('data-gate');
 
-      chip.addEventListener('dragstart', (e) => {
-        this.activeDragGate = gate;
-        e.dataTransfer.setData('text/plain', gate);
-      });
-
       chip.addEventListener('click', () => {
+        // A drag-to-place just happened via the pointer-based path below;
+        // the browser still fires a click right after pointerup, which would
+        // otherwise immediately re-arm the same gate we just placed.
+        if (this._suppressNextChipClick) {
+          this._suppressNextChipClick = false;
+          return;
+        }
+
         const hintEl = document.getElementById('palette-hint-text');
         const slots = document.querySelectorAll('.gate-slot:not(.has-gate)');
 
@@ -1085,6 +1229,8 @@ class CircuitUI {
         }
       });
     });
+
+    this.bindPointerGateDrag(paletteChips);
 
     // Bloch Qubit Selector
     if (this.qubitSelect) {
@@ -1825,11 +1971,13 @@ class CircuitUI {
     const btn3d = document.getElementById('btn-view-3d');
     const btnBeg = document.getElementById('btn-pedagogy-beginner');
     const btnAdv = document.getElementById('btn-pedagogy-advanced');
+    const btnTut = document.getElementById('btn-pedagogy-tutor');
 
     if (btn2d) btn2d.addEventListener('click', () => this.setDimensionMode('2d'));
     if (btn3d) btn3d.addEventListener('click', () => this.setDimensionMode('3d'));
     if (btnBeg) btnBeg.addEventListener('click', () => this.setPedagogyMode('beginner'));
     if (btnAdv) btnAdv.addEventListener('click', () => this.setPedagogyMode('advanced'));
+    if (btnTut) btnTut.addEventListener('click', () => this.setPedagogyMode('tutor'));
 
     // Interactive ambient cryogenic lighting on circuit canvas
     const canvas = document.querySelector('.circuit-canvas-white');
@@ -1889,21 +2037,39 @@ class CircuitUI {
     this.pedagogyMode = mode;
     const begPanel = document.getElementById('intel-beginner-panel');
     const advPanel = document.getElementById('intel-advanced-panel');
+    const tutPanel = document.getElementById('intel-tutor-panel');
     const btnBeg = document.getElementById('btn-pedagogy-beginner');
     const btnAdv = document.getElementById('btn-pedagogy-advanced');
+    const btnTut = document.getElementById('btn-pedagogy-tutor');
+
+    if (begPanel) begPanel.style.display = 'none';
+    if (advPanel) advPanel.style.display = 'none';
+    if (tutPanel) tutPanel.style.display = 'none';
+    if (btnBeg) btnBeg.classList.remove('active');
+    if (btnAdv) btnAdv.classList.remove('active');
+    if (btnTut) btnTut.classList.remove('active');
 
     if (mode === 'advanced') {
-      if (begPanel) begPanel.style.display = 'none';
       if (advPanel) advPanel.style.display = 'block';
-      if (btnBeg) btnBeg.classList.remove('active');
       if (btnAdv) btnAdv.classList.add('active');
+      this.updateQuantumIntelligenceDeck();
+    } else if (mode === 'tutor') {
+      if (tutPanel) tutPanel.style.display = 'block';
+      if (btnTut) btnTut.classList.add('active');
+      if (window.circuitTutor) {
+        window.circuitTutor.runAudit();
+      }
     } else {
-      if (advPanel) advPanel.style.display = 'none';
       if (begPanel) begPanel.style.display = 'block';
-      if (btnAdv) btnAdv.classList.remove('active');
       if (btnBeg) btnBeg.classList.add('active');
+      this.updateQuantumIntelligenceDeck();
     }
-    this.updateQuantumIntelligenceDeck();
+  }
+
+  openAiTutor() {
+    this.setPedagogyMode('tutor');
+    const deck = document.getElementById('quantum-intelligence-deck');
+    if (deck) deck.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   renderMathBox(elementId, latexStr) {

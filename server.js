@@ -197,8 +197,8 @@ const server = http.createServer(async (req, res) => {
 
   // ================= API ROUTES =================
 
-  // Dedicated Multi-task Multi-Provider AI Endpoint (/api/gemini, /api/ai, /api/grok)
-  if (pathname === '/api/gemini' || pathname === '/api/ai' || pathname === '/api/grok') {
+  // Dedicated Multi-task Multi-Provider AI Endpoint (/api/gemini, /api/ai, /api/grok, /api/ai/tutor)
+  if (pathname === '/api/gemini' || pathname === '/api/ai' || pathname === '/api/grok' || pathname === '/api/ai/tutor') {
     try {
       delete require.cache[require.resolve('./api/gemini.js')];
     } catch (e) {}

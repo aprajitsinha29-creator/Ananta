@@ -372,7 +372,18 @@ async function handler(req, res) {
   }
 
   const body = await getParsedBody(req);
-  const { task, payload } = body || {};
+  let task = body?.task;
+  let payload = body?.payload;
+
+  // Handle direct calls to /api/ai/tutor or /api/ai with flat body
+  const reqUrl = new URL(req.url, `http://${req.headers?.host || '127.0.0.1'}`);
+  if (!task && reqUrl.pathname.endsWith('/tutor')) {
+    task = 'circuit-tutor';
+    payload = body || {};
+  }
+  if (task && !payload) {
+    payload = body || {};
+  }
 
   // Task: provider-info / model status
   if (task === 'provider-info' || task === 'status') {
@@ -631,6 +642,81 @@ ${responseSchemaNote}`;
         systemPrompt,
         question,
         () => generateConceptDoctorLocally(question, groundingEntries),
+        res
+      );
+    }
+
+    // ------------------------------------------------------------------
+    // 5. CIRCUIT TUTOR — SIH Problem Statement 26140 Grounded AI Circuit Tutor
+    //    Identifies what the student is making, performs mathematical error
+    //    checking, detects pathologies (redundancies, premature collapse,
+    //    idle wires, ineffective CNOTs), and provides anti-hallucinatory guidance.
+    // ------------------------------------------------------------------
+    case 'circuit-tutor': {
+      const {
+        gridStructure,
+        numQubits,
+        activeDepth,
+        diracNotation,
+        probabilities,
+        mathMetrics,
+        deterministicErrors,
+        userQuestion
+      } = payload;
+
+      const systemPrompt = `You are the Principal Quantum Computing Professor & Interactive Circuit Tutor for Ananta Quantum Studio (SIH Problem Statement 26140).
+Your goal is to guide students building quantum circuits by providing:
+1. WHAT THEY ARE MAKING: Accurately identify the quantum state or algorithm being implemented.
+2. CIRCUIT PATHOLOGY & ERROR ANALYSIS: Identify mistakes (e.g. self-cancelling gates, premature measurement collapse, idle wires, ineffective CNOTs without superposition, depth bloat).
+3. PHYSICAL INTUITION & RECOMMENDATIONS: Grounded in real quantum physics (concurrence, entropy, statevector).
+
+STRICT ANTI-HALLUCINATION RULES:
+- Ground all statements STRICTLY in the provided circuit ground truth data below.
+- DO NOT invent gates, qubits, or state probabilities not present in the ground truth.
+- If the circuit is empty, tell the student to place gates to begin.
+- If errors are present, explain the physical reason (e.g. Born rule collapse, Clifford involution H^2 = I) and give a clear fix.
+
+GROUND TRUTH SIMULATOR DATA:
+- Register Size: ${numQubits || 3} Qubits, Active Depth: ${activeDepth || 0}
+- Circuit Wire Topology:
+${gridStructure || '(empty circuit)'}
+- Dirac Statevector: ${diracNotation || '|0...0>'}
+- Measurement Probabilities: ${JSON.stringify(probabilities || {})}
+- Quantum Physics Metrics:
+  * Concurrence C = ${mathMetrics?.concurrence ?? '0.00'}
+  * von Neumann Entropy S = ${mathMetrics?.entropy ?? '0.00'} ebits
+  * Subsystem Purity gamma = ${mathMetrics?.purity ?? '1.00'}
+  * Entanglement Classification: ${mathMetrics?.entanglementClass || 'Separable'}
+- Deterministic Static Analysis Findings:
+${JSON.stringify(deterministicErrors || [])}
+${userQuestion ? `- Student Question: "${userQuestion}"` : ''}
+
+You MUST return ONLY a valid JSON object matching this schema:
+{
+  "circuitSummary": "Concise title identifying what is being made (e.g., 'Bell State |Phi+> Preparation', 'Tripartite GHZ Entanglement', 'Custom Superposition Register', 'Ground State Baseline')",
+  "circuitPurpose": "2-3 clear sentences explaining what this quantum circuit computes and its practical quantum application.",
+  "isHealthy": <boolean: true if no severe errors, false if errors or inefficiencies exist>,
+  "healthBadge": "<e.g. 'Healthy Circuit (100% Sound)' or '2 Issues Detected' or 'Compilation Error'>",
+  "errors": [
+    {
+      "severity": "error" | "warning" | "optimization",
+      "title": "<short finding title>",
+      "location": "<e.g. Wire q[0] at step 2>",
+      "explanation": "<physical explanation of why this happens>",
+      "suggestedFix": "<concrete instruction to fix it>"
+    }
+  ],
+  "entanglementAnalysis": "1-2 sentences interpreting the concurrence and entanglement of the current state.",
+  "tutorGuidance": "2-3 sentences of direct teacher-to-student advice on what to explore next or how to fix issues."
+}
+${responseSchemaNote}`;
+
+      return await callMultiProviderAI(
+        req,
+        body,
+        systemPrompt,
+        userQuestion || 'Analyze my current quantum circuit, tell me what I am making, and detect any errors',
+        () => generateCircuitTutorLocally(payload),
         res
       );
     }
@@ -1051,6 +1137,68 @@ function generateCircuitAuditLocally(payload) {
     decoherenceRisks: `Physical qubit 0 carries primary phase-accumulation depth. T1 decay risk is within NISQ threshold boundaries (<0.8% error rate).`,
     qpuRecommendation: 'Recommended for execution on IBM Eagle r3 (Heavy-Hex) or Google Sycamore with dynamical decoupling.',
     clinicalPrescription: 'Apply XY4 Dynamical Decoupling and Zero-Noise Extrapolation (ZNE) before final readout measurement.'
+  };
+}
+
+function generateCircuitTutorLocally(payload) {
+  const numQubits = payload?.numQubits || 3;
+  const deterministicErrors = Array.isArray(payload?.deterministicErrors) ? payload.deterministicErrors : [];
+
+  // Map the frontend's own lint findings (idle wires, excess depth, etc.)
+  const errors = deterministicErrors.map(err => ({
+    severity: err.type === 'error' ? 'error' : (err.type === 'warning' ? 'warning' : 'optimization'),
+    title: err.title || 'Circuit Inefficiency',
+    location: err.location || 'Circuit grid',
+    explanation: err.desc || 'Operation affects circuit compilation depth or coherence.',
+    suggestedFix: err.fix || 'Review gate placement.'
+  }));
+
+  let summary, purpose, entanglementAnalysis;
+
+  if (Array.isArray(payload?.grid)) {
+    // The real path: describe what is actually on the board, from an actual
+    // simulation — not a guess from a Dirac-notation string. This is what
+    // stopped "H, T, Y" being described as "Uniform Superposition State"
+    // (a label only ever earned by looking at the H and ignoring the rest).
+    const { describeCircuit } = require('../ananta-backend/utils/quantumState');
+    const described = describeCircuit(payload.grid, numQubits);
+    summary = described.summary;
+    purpose = described.purpose;
+    entanglementAnalysis = described.entanglementAnalysis;
+
+    // Structural issues the simulator itself found (dangling CNOT/SWAP, unknown
+    // gate) are real errors — merge them in ahead of the frontend's lint list.
+    for (const issue of described.analysis.issues) {
+      if (issue.code === 'EMPTY_CIRCUIT') continue;
+      errors.unshift({
+        severity: 'error',
+        title: issue.code.replace(/_/g, ' '),
+        location: issue.column != null ? `Time step ${issue.column + 1}` : 'Circuit grid',
+        explanation: issue.message,
+        suggestedFix: 'Complete or remove the incomplete gate.'
+      });
+    }
+  } else {
+    // No raw grid was sent (older caller) — honest but generic, since without
+    // the grid there is nothing real to ground a specific claim in.
+    summary = 'Custom Quantum Circuit';
+    purpose = 'A circuit is present but its gate-level structure was not provided to this analysis, so no specific claim about it can be grounded. Provide the circuit grid for an exact description.';
+    entanglementAnalysis = 'Unknown — entanglement was not computed because the gate grid was not provided.';
+  }
+
+  const isHealthy = !errors.some(e => e.severity === 'error');
+  const tutorGuidance = errors.length > 0
+    ? `You have ${errors.length} diagnostic recommendation(s). Review the highlighted findings above to optimize circuit depth and avoid unwanted state collapse.`
+    : 'Your quantum circuit logic is sound and unitary! Try experimenting with relative phase (Phase S or T gates) or adding a CNOT to a third wire to observe entanglement scaling.';
+
+  return {
+    circuitSummary: summary,
+    circuitPurpose: purpose,
+    isHealthy,
+    healthBadge: errors.length === 0 ? 'Healthy Circuit (100% Sound)' : `${errors.length} Issue(s) Detected`,
+    errors,
+    entanglementAnalysis,
+    tutorGuidance
   };
 }
 

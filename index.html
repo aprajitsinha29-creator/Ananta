@@ -1099,17 +1099,13 @@
         <!-- Workspace Header Toolbar -->
         <div class="studio-ribbon">
           <div class="ribbon-meta">
-            <span class="file-name-label" id="circuit-filename-label">bell_state.qc</span>
-            <div class="quick-tools" id="composer-preset-bar">
-              <button class="tool-btn active-preset" data-preset="bell" onclick="window.loadPresetSafe('bell')" title="Bell State |Φ⁺⟩ = (|000⟩ + |110⟩)/√2: Maximally entangled bipartite quantum state">⚡ Bell State</button>
-              <button class="tool-btn" data-preset="ghz" onclick="window.loadPresetSafe('ghz')" title="GHZ 3-Qubit State (|000⟩ + |111⟩)/√2: Tripartite entangled superposition">🔮 GHZ 3-Qubit</button>
-              <button class="tool-btn" data-preset="teleport" onclick="window.loadPresetSafe('teleport')" title="Quantum Teleportation: Teleports an unknown qubit using an EPR channel and Bell measurement">📡 Teleportation</button>
-              <button class="tool-btn" data-preset="grover" onclick="window.loadPresetSafe('grover')" title="Grover Quantum Search: Quadratic speedup over classical unstructured search">🔍 Grover</button>
-              <button class="tool-btn" data-preset="qft" onclick="window.loadPresetSafe('qft')" title="Quantum Fourier Transform: Backbone of Shor's and phase estimation algorithms">🌊 QFT</button>
-            </div>
+            <span class="file-name-label" id="circuit-filename-label">custom_circuit.qc</span>
           </div>
 
           <div class="ribbon-actions">
+            <button class="tool-btn btn-ai-tutor" id="btn-open-ai-tutor" onclick="if(window.circuitUI) window.circuitUI.openAiTutor()" title="SIH 26140 AI Circuit Tutor & Error Doctor (Identify state, inspect circuit errors & explain physics)">
+              🎓 AI Circuit Tutor
+            </button>
             <button class="tool-btn btn-voice-camera" id="btn-voice-camera" onclick="window.quantumVoiceCopilot && window.quantumVoiceCopilot.toggle()" title="Live AI Voice Copilot (Speak to place gates and build circuits hands-free)">
               🎙️ Voice AI
             </button>
@@ -1304,37 +1300,45 @@
             </div>
 
             <div class="operations-grid">
-              <button class="gate-btn btn-coral" draggable="true" data-gate="H" title="Hadamard (H): H = (1/√2)[[1,1],[1,-1]]. Maps |0⟩→|+⟩ and |1⟩→|−⟩. Creates equal superposition.">
+              <button class="gate-btn btn-coral" data-gate="H" title="Hadamard (H): H = (1/√2)[[1,1],[1,-1]]. Maps |0⟩→|+⟩ and |1⟩→|−⟩. Creates equal superposition.">
                 <span class="gate-key">H</span>
                 <span class="gate-label">Hadamard</span>
               </button>
-              <button class="gate-btn btn-blue" draggable="true" data-gate="CX" title="CNOT (CX): Controlled-X gate. Flips target qubit if control is |1⟩. Creates entanglement.">
+              <button class="gate-btn btn-blue" data-gate="CX" title="CNOT (CX): Controlled-X gate. Flips target qubit if control is |1⟩. Creates entanglement.">
                 <span class="gate-key">⊕</span>
                 <span class="gate-label">CNOT</span>
               </button>
-              <button class="gate-btn btn-crimson" draggable="true" data-gate="X" title="Pauli-X: Quantum bit-flip. X = [[0,1],[1,0]]. Maps |0⟩→|1⟩ and |1⟩→|0⟩.">
+              <button class="gate-btn btn-crimson" data-gate="X" title="Pauli-X: Quantum bit-flip. X = [[0,1],[1,0]]. Maps |0⟩→|1⟩ and |1⟩→|0⟩.">
                 <span class="gate-key">X</span>
                 <span class="gate-label">Pauli-X</span>
               </button>
-              <button class="gate-btn btn-magenta" draggable="true" data-gate="Y" title="Pauli-Y: Combined bit and phase flip. Y = [[0,-i],[i,0]]. Rotates around Y-axis on Bloch sphere.">
+              <button class="gate-btn btn-magenta" data-gate="Y" title="Pauli-Y: Combined bit and phase flip. Y = [[0,-i],[i,0]]. Rotates around Y-axis on Bloch sphere.">
                 <span class="gate-key">Y</span>
                 <span class="gate-label">Pauli-Y</span>
               </button>
-              <button class="gate-btn btn-purple" draggable="true" data-gate="Z" title="Pauli-Z: Phase flip gate. Z = diag(1,-1). Maps |+⟩→|−⟩. Leaves |0⟩ unchanged, flips phase of |1⟩.">
+              <button class="gate-btn btn-purple" data-gate="Z" title="Pauli-Z: Phase flip gate. Z = diag(1,-1). Maps |+⟩→|−⟩. Leaves |0⟩ unchanged, flips phase of |1⟩.">
                 <span class="gate-key">Z</span>
                 <span class="gate-label">Pauli-Z</span>
               </button>
-              <button class="gate-btn btn-cyan" draggable="true" data-gate="S" title="Phase S gate: S = diag(1, i). Applies π/2 phase shift to |1⟩. Used in QFT and stabilizer circuits.">
+              <button class="gate-btn btn-cyan" data-gate="S" title="Phase S gate: S = diag(1, i). Applies π/2 phase shift to |1⟩. Used in QFT and stabilizer circuits.">
                 <span class="gate-key">S</span>
                 <span class="gate-label">Phase S</span>
               </button>
-              <button class="gate-btn btn-sky" draggable="true" data-gate="T" title="T gate: T = diag(1, e^(iπ/4)). Applies π/4 phase shift to |1⟩. Non-Clifford universal gate.">
+              <button class="gate-btn btn-sky" data-gate="T" title="T gate: T = diag(1, e^(iπ/4)). Applies π/4 phase shift to |1⟩. Non-Clifford universal gate.">
                 <span class="gate-key">T</span>
                 <span class="gate-label">T Gate</span>
               </button>
-              <button class="gate-btn btn-slate" draggable="true" data-gate="M" title="Projective Measurement: Collapses quantum superposition into classical bit via Born rule.">
+              <button class="gate-btn btn-slate" data-gate="M" title="Projective Measurement: Collapses quantum superposition into classical bit via Born rule.">
                 <span class="gate-key">∿</span>
                 <span class="gate-label">Measure</span>
+              </button>
+              <button class="gate-btn btn-amber" data-gate="SWAP" title="SWAP: Exchanges the states of two qubits. Decomposes into three CNOTs; used to route qubits on hardware with limited connectivity.">
+                <span class="gate-key">⤫</span>
+                <span class="gate-label">SWAP</span>
+              </button>
+              <button class="gate-btn btn-blue" data-gate="Toffoli" title="Toffoli (CCX): Flips the target only if BOTH controls are |1⟩. The building block of reversible classical computation inside a quantum circuit.">
+                <span class="gate-key">⊕²</span>
+                <span class="gate-label">Toffoli</span>
               </button>
             </div>
 
@@ -1412,12 +1416,15 @@
                   </button>
                 </div>
 
-                <div class="mode-pill-group" title="Switch between Beginner Intuition and Advanced Research depth">
+                <div class="mode-pill-group" title="Switch between Beginner Intuition, Advanced Research, and SIH AI Circuit Tutor & Error Doctor">
                   <button type="button" class="mode-pill-btn active" id="btn-pedagogy-beginner" onclick="window.circuitUI.setPedagogyMode('beginner')">
                     🎓 Beginner Intuition
                   </button>
                   <button type="button" class="mode-pill-btn" id="btn-pedagogy-advanced" onclick="window.circuitUI.setPedagogyMode('advanced')">
                     🔬 Advanced Research
+                  </button>
+                  <button type="button" class="mode-pill-btn" id="btn-pedagogy-tutor" onclick="window.circuitUI.setPedagogyMode('tutor')">
+                    🤖 AI Tutor &amp; Doctor
                   </button>
                 </div>
               </div>
@@ -1525,6 +1532,78 @@
                         <span class="qgauge-label">Bloch Radius $|\vec{r}_{q_0}|$:</span>
                         <strong class="qgauge-val val-coral" id="advanced-bloch-radius-val">0.000 (Origin)</strong>
                         <div class="qgauge-bar-track"><div class="qgauge-bar-fill fill-coral" id="gauge-bar-bloch-r" style="width: 0%;"></div></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- AI Quantum Circuit Tutor & Error Doctor (SIH Problem Statement 26140) -->
+              <div class="intel-card intel-tutor-card" id="intel-tutor-panel" style="display: none;">
+                <div class="intel-card-header">
+                  <div class="intel-badge-row">
+                    <span class="intel-mode-tag tag-tutor">🤖 AI CIRCUIT TUTOR</span>
+                    <span class="intel-sih-tag">SIH 26140</span>
+                    <div class="tutor-health-pill healthy" id="tutor-health-badge">🟢 Circuit Healthy (100% Sound)</div>
+                  </div>
+                  <div class="tutor-header-actions">
+                    <label class="tutor-auto-toggle-label" title="Automatically evaluate circuit when gates are modified">
+                      <input type="checkbox" id="tutor-auto-audit-toggle" checked>
+                      <span>Live Audit</span>
+                    </label>
+                    <button type="button" class="tutor-btn-action" id="btn-tutor-analyze" title="Run instant quantum circuit diagnosis">
+                      ⚡ Analyze Circuit
+                    </button>
+                  </div>
+                </div>
+
+                <div class="tutor-main-grid">
+                  <!-- Section 1: What You Are Making -->
+                  <div class="tutor-section-card">
+                    <div class="tutor-sec-header">
+                      <span class="tutor-sec-icon">🎯</span>
+                      <h4 class="tutor-sec-title">Circuit Identity &amp; State</h4>
+                    </div>
+                    <div class="tutor-making-badge" id="tutor-making-title">Empty Circuit (Ground State |0...0⟩)</div>
+                    <p class="tutor-making-text" id="tutor-making-desc">
+                      All qubits reside in the lowest-energy computational ground state |0⟩. Click any gate on the left palette to begin constructing your quantum program.
+                    </p>
+                    <div class="tutor-entanglement-box">
+                      <span class="tutor-sub-label">Entanglement Analysis:</span>
+                      <p id="tutor-entanglement-desc">The quantum register is currently separable (unentangled product state with C = 0.00).</p>
+                    </div>
+                  </div>
+
+                  <!-- Section 2: Error Doctor & Diagnostic Findings -->
+                  <div class="tutor-section-card">
+                    <div class="tutor-sec-header">
+                      <span class="tutor-sec-icon">🩺</span>
+                      <h4 class="tutor-sec-title">Error Doctor Diagnostics</h4>
+                    </div>
+                    <div class="tutor-errors-list" id="tutor-errors-container">
+                      <div class="tutor-clean-state">
+                        <span class="tutor-clean-icon">✨</span>
+                        <div class="tutor-clean-text">
+                          <strong>Zero Pathologies Detected</strong>
+                          <p>No redundant gates, premature measurements, or idle qubit anomalies found. Unitary logic is completely sound!</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Section 3: Interactive Pedagogical Guidance & Chat -->
+                  <div class="tutor-section-card">
+                    <div class="tutor-sec-header">
+                      <span class="tutor-sec-icon">💡</span>
+                      <h4 class="tutor-sec-title">Tutor Guidance &amp; Socratic Q&amp;A</h4>
+                    </div>
+                    <p class="tutor-guidance-text" id="tutor-guidance-desc">
+                      Add a Hadamard gate to qubit q[0] to create a quantum superposition, then entangle it with a CNOT gate on qubit q[1].
+                    </p>
+                    <div class="tutor-qa-box">
+                      <div class="tutor-qa-input-row">
+                        <input type="text" id="tutor-question-input" class="tutor-qa-input" placeholder="Ask AI tutor about your circuit...">
+                        <button type="button" id="btn-tutor-ask" class="tutor-qa-submit">Ask</button>
                       </div>
                     </div>
                   </div>
@@ -3940,6 +4019,7 @@ Key Advantage:
   <script src="js/cryo-twin.js"></script>
   <script src="js/pqc-auditor.js"></script>
   <script src="js/quantum-voice-copilot.js"></script>
+  <script src="js/circuit-tutor.js"></script>
   <script src="js/quantum-maze-sim.js"></script>
   <script src="js/app.js"></script>
   <!-- KaTeX Auto-Render Engine -->
