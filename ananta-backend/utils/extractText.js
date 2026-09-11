@@ -1,3 +1,33 @@
+const MAX_PDF_BYTES = 30 * 1024 * 1024; // 30MB — a generous cap for a research paper
+const MAX_EXTRACTED_CHARS = 60000; // enough for a real summary; keeps prompt/latency bounded
+
+/**
+ * Downloads a PDF and extracts its actual text (every page, not just an
+ * abstract). Returns '' on any failure that isn't the caller's fault — a
+ * scanned/image-only PDF, a dead link, a size cap — so callers can fall back
+ * to whatever metadata they already have instead of throwing.
+ */
+async function fetchPdfText(pdfUrl) {
+  if (!pdfUrl) return '';
+  try {
+    const res = await fetch(pdfUrl, {
+      headers: { 'User-Agent': 'Ananta-Quantum-Studio/1.0 (research reader)' }
+    });
+    if (!res.ok) return '';
+
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > MAX_PDF_BYTES) return '';
+    if (buf.length < 4 || buf.toString('ascii', 0, 4) !== '%PDF') return ''; // not actually a PDF
+
+    const pdfParse = require('pdf-parse');
+    const data = await pdfParse(buf);
+    return (data.text || '').trim();
+  } catch (e) {
+    console.warn('[extractText] PDF extraction notice for', pdfUrl, ':', e.message);
+    return '';
+  }
+}
+
 /**
  * Downloads a web page or research paper and extracts readable text.
  * Uses native fetch and regex/HTML parsing. Special handling for arXiv abstracts and PDFs.
@@ -34,8 +64,16 @@ async function extractTextFromUrl(url) {
         const authors = authorsM.length ? authorsM.join(', ') : 'Researchers in Quantum Science';
         const date = dateM ? dateM[1].substring(0, 10) : '';
 
-        const fullText = `Title: ${title}\nAuthors: ${authors}\nPublished: ${date}\narXiv Identifier: ${arxivId}\n\nAbstract & Research Core:\n${summary}`;
-        return { title, text: fullText };
+        // The abstract alone is not the paper — fetch the actual PDF body.
+        // Every arXiv id has a PDF at this exact URL, so this is not a guess.
+        const pdfBody = await fetchPdfText(`https://arxiv.org/pdf/${arxivId}`);
+
+        const header = `Title: ${title}\nAuthors: ${authors}\nPublished: ${date}\narXiv Identifier: ${arxivId}\n\nAbstract:\n${summary}`;
+        const fullText = pdfBody
+          ? `${header}\n\nFull Paper Text:\n${pdfBody}`.slice(0, MAX_EXTRACTED_CHARS)
+          : `${header}\n\n(Could not extract the full PDF body — this paper may be a scanned image, or the PDF was unreachable. Summary below is based on the abstract only.)`;
+
+        return { title, text: fullText, fullTextAvailable: Boolean(pdfBody) };
       }
     } catch (e) {
       console.warn('[extractText] arXiv API lookup notice:', e.message);
@@ -56,11 +94,15 @@ async function extractTextFromUrl(url) {
 
   const contentType = response.headers.get('content-type') || '';
   if (cleanUrl.toLowerCase().endsWith('.pdf') || contentType.includes('application/pdf')) {
-    const title = cleanUrl.split('/').pop().replace(/\.pdf$/i, '') || 'Research PDF Document';
-    return {
-      title,
-      text: `PDF Document (${title}): Scientific document stream from ${cleanUrl}. Full theoretical equations and proofs indexed in archive.`
-    };
+    const fallbackTitle = decodeURIComponent(cleanUrl.split('/').pop() || '').replace(/\.pdf$/i, '') || 'Research PDF Document';
+    const pdfBody = await fetchPdfText(cleanUrl);
+    if (!pdfBody) {
+      throw new Error('Could not extract text from this PDF (unreachable, too large, or a scanned image with no text layer)');
+    }
+    // The PDF's own title (first non-empty line) usually reads better than a
+    // URL-derived filename slug.
+    const firstLine = pdfBody.split('\n').map(l => l.trim()).find(l => l.length > 4 && l.length < 200);
+    return { title: firstLine || fallbackTitle, text: pdfBody.slice(0, MAX_EXTRACTED_CHARS), fullTextAvailable: true };
   }
 
   const html = await response.text();
@@ -79,17 +121,28 @@ async function extractTextFromUrl(url) {
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
+    .replace(/&#(\d+);/g, (m, code) => String.fromCodePoint(parseInt(code, 10))) // numeric entities: &#8211; -> –
+    .replace(/&#x([0-9a-f]+);/gi, (m, hex) => String.fromCodePoint(parseInt(hex, 16))) // hex entities: &#x2013; -> –
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&ldquo;|&rdquo;/gi, '"')
+    .replace(/&lsquo;|&rsquo;/gi, "'")
+    .replace(/&amp;/gi, '&') // must run after numeric decoding, and last among named entities (it would otherwise mangle them, e.g. turning &amp;lt; into &lt;)
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/\s+/g, ' ')
     .trim();
 
-  if (cleaned.length > 25000) {
-    cleaned = cleaned.substring(0, 25000);
+  if (cleaned.length > MAX_EXTRACTED_CHARS) {
+    cleaned = cleaned.substring(0, MAX_EXTRACTED_CHARS);
   }
 
-  return { title, text: cleaned };
+  // Some DOI-registered records (lab protocols, dataset landing pages, JS-
+  // rendered SPAs) return almost no server-rendered text — a title and
+  // little else. That is not "the full paper", and claiming otherwise is
+  // exactly the dishonesty this function was rewritten to stop doing.
+  const MIN_CREDIBLE_CHARS = 400;
+  return { title, text: cleaned, fullTextAvailable: cleaned.length >= MIN_CREDIBLE_CHARS };
 }
 
-module.exports = { extractTextFromUrl };
+module.exports = { extractTextFromUrl, fetchPdfText };

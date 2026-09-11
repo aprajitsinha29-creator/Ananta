@@ -55,6 +55,14 @@ function logTransaction(method, endpoint, statusCode, durationMs, details = {}) 
 const ibmQuantum = require('./ananta-backend/utils/ibmQuantum');
 let IBM_QUANTUM_TOKEN = process.env.IBM_QUANTUM_TOKEN || process.env.IBM_API_KEY || '';
 
+// qBraid Multi-Provider Quantum Execution Utility
+const qbraidClient = require('./ananta-backend/utils/qbraidClient');
+let QBRAID_API_KEY = process.env.QBRAID_API_KEY || process.env.QBRAID_TOKEN || '';
+
+// Assessment & Instructor Subsystem
+const quizEngine = require('./ananta-backend/utils/quizEngine');
+const instructorStorage = require('./ananta-backend/utils/instructorStorage');
+
 // Physical Device Fleet Catalog (Baseline Reference)
 const QPU_DEVICES = ibmQuantum.REFERENCE_QPU_DEVICES;
 
@@ -231,9 +239,9 @@ const server = http.createServer(async (req, res) => {
     const { url } = body || {};
     if (!url) return sendJson(res, 400, { error: 'url is required' });
     try {
-      const { title, text } = await extractTextFromUrl(url);
-      logTransaction('POST', pathname, 200, Date.now() - reqStart, { url, title, length: text.length });
-      return sendJson(res, 200, { url, title, length: text.length, text });
+      const { title, text, fullTextAvailable } = await extractTextFromUrl(url);
+      logTransaction('POST', pathname, 200, Date.now() - reqStart, { url, title, length: text.length, fullTextAvailable });
+      return sendJson(res, 200, { url, title, length: text.length, text, fullTextAvailable: Boolean(fullTextAvailable) });
     } catch (e) {
       logTransaction('POST', pathname, 500, Date.now() - reqStart, { error: e.message });
       return sendJson(res, 500, { error: 'Could not fetch/parse that URL: ' + e.message });
@@ -331,11 +339,15 @@ const server = http.createServer(async (req, res) => {
         status: GEMINI_API_KEY ? 'CONNECTED' : 'KEY_MISSING'
       },
       qpuDevices: Object.keys(QPU_DEVICES),
+      qbraidDevices: Object.keys(qbraidClient.REFERENCE_QBRAID_DEVICES),
       activeFeatures: [
         'Quantum Circuit Composer',
         'Universal Transpiler & AI Circuit Doctor',
         'Topic Roadmap & Custom AI Synthesis',
-        'Physical Cloud QPU Hardware Bridge',
+        'Physical Cloud QPU Hardware Bridge (IBM Quantum)',
+        'qBraid Multi-Provider Bridge (AWS, QuEra, IonQ, Rigetti, OQC)',
+        'Conceptual Quizzes & Automated Grading Engine',
+        'Classroom Instructor Dashboard & Cohort Analytics',
         'Quantum Voice & Video Copilot',
         'Real-time Statevector Simulator',
         'Cryostat Digital Twin',
@@ -780,6 +792,308 @@ User Question: "${message}"`;
       sendJson(res, 500, { success: false, error: err.message });
       logTransaction('GET', pathname, 500, Date.now() - reqStart, { error: err.message });
     }
+    return;
+  }
+
+  // ================= 9. QBRAID MULTI-PROVIDER QUANTUM EXECUTION ENDPOINTS =================
+
+  // 9a. GET /api/qbraid/devices (Live qBraid Fleet Discovery & Multi-Provider Telemetry)
+  if (pathname === '/api/qbraid/devices' && req.method === 'GET') {
+    const apiKey = req.headers['x-qbraid-key'] || reqUrl.searchParams.get('key') || QBRAID_API_KEY;
+    try {
+      const fleet = await qbraidClient.getLiveBackends(apiKey);
+      sendJson(res, 200, { success: true, ...fleet });
+      logTransaction('GET', pathname, 200, Date.now() - reqStart, { isLive: fleet.isLive, count: fleet.count });
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+      logTransaction('GET', pathname, 500, Date.now() - reqStart, { error: err.message });
+    }
+    return;
+  }
+
+  // 9b. POST /api/qbraid/auth (Validate qBraid API Key & Account Credentials)
+  if (pathname === '/api/qbraid/auth' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const apiKey = body.apiKey || body.token || req.headers['x-qbraid-key'] || QBRAID_API_KEY;
+      const authRes = await qbraidClient.validateToken(apiKey);
+      sendJson(res, authRes.valid ? 200 : 401, authRes);
+      logTransaction('POST', pathname, authRes.valid ? 200 : 401, Date.now() - reqStart, { valid: authRes.valid });
+    } catch (err) {
+      sendJson(res, 500, { valid: false, error: err.message });
+      logTransaction('POST', pathname, 500, Date.now() - reqStart, { error: err.message });
+    }
+    return;
+  }
+
+  // 9c. POST /api/qbraid/run (Execute Circuit on qBraid Backend or Realistic Architecture Noise)
+  if (pathname === '/api/qbraid/run' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const {
+        backend = 'qbraid_sdk_simulator',
+        shots = 1024,
+        qasm = '',
+        numQubits = 3,
+        idealProbabilities = null,
+        mode = 'auto',
+        requireLive = false
+      } = body || {};
+
+      const apiKey = req.headers['x-qbraid-key'] || body.apiKey || body.token || QBRAID_API_KEY;
+      const isSimulator = backend.includes('simulator');
+      const shouldAttemptLive = !isSimulator && mode !== 'simulation' && Boolean(apiKey);
+
+      if (shouldAttemptLive) {
+        try {
+          console.log(`[Server] Submitting circuit to real qBraid backend (${backend})...`);
+          const job = await qbraidClient.submitQbraidJob({
+            apiKey,
+            backend,
+            qasm,
+            shots
+          });
+
+          sendJson(res, 200, {
+            ...job,
+            executionTimeMs: Math.round(Date.now() - reqStart)
+          });
+          logTransaction('POST', pathname, 200, Date.now() - reqStart, {
+            jobId: job.jobId,
+            backend,
+            isRealHardware: true,
+            status: job.status
+          });
+          return;
+        } catch (qbrErr) {
+          console.warn(`[Server] Live qBraid dispatch notice: ${qbrErr.message}`);
+          if (requireLive || mode === 'hardware') {
+            sendJson(res, 502, {
+              success: false,
+              isRealHardware: true,
+              error: `qBraid Execution Failed: ${qbrErr.message}`
+            });
+            logTransaction('POST', pathname, 502, Date.now() - reqStart, { error: qbrErr.message });
+            return;
+          }
+          // Fallback to high-fidelity architecture simulation
+          const simRes = qbraidClient.runSimulatedNoise({ backend, shots, numQubits, idealProbabilities, qasm });
+          simRes.fallbackReason = qbrErr.message;
+          simRes.executionTimeMs = Math.round(Date.now() - reqStart);
+          sendJson(res, 200, simRes);
+          logTransaction('POST', pathname, 200, Date.now() - reqStart, { mode: 'fallback_simulation' });
+          return;
+        }
+      }
+
+      // Sandbox / Simulated Mode with architecture-specific physical noise model
+      const simRes = qbraidClient.runSimulatedNoise({ backend, shots, numQubits, idealProbabilities, qasm });
+      simRes.executionTimeMs = Math.round(Date.now() - reqStart);
+      sendJson(res, 200, simRes);
+      logTransaction('POST', pathname, 200, Date.now() - reqStart, {
+        jobId: simRes.jobId,
+        backend,
+        isRealHardware: false,
+        status: 'COMPLETED'
+      });
+      return;
+    } catch (err) {
+      console.error('[API /api/qbraid/run Error]', err);
+      sendJson(res, 500, { success: false, error: err.message });
+      logTransaction('POST', pathname, 500, Date.now() - reqStart, { error: err.message });
+      return;
+    }
+  }
+
+  // 9d. GET /api/qbraid/job/:id (Poll qBraid Job Status and Results)
+  if (pathname.startsWith('/api/qbraid/job/') && req.method === 'GET') {
+    const jobId = pathname.replace('/api/qbraid/job/', '').trim();
+    const apiKey = req.headers['x-qbraid-key'] || reqUrl.searchParams.get('key') || QBRAID_API_KEY;
+
+    if (!jobId) {
+      return sendJson(res, 400, { error: 'Job ID is required in URL path' });
+    }
+    if (jobId.startsWith('qbr_sim_')) {
+      return sendJson(res, 200, { status: 'COMPLETED', jobId, executionMode: 'SIMULATED_PHYSICAL_NOISE' });
+    }
+
+    try {
+      const jobResult = await qbraidClient.getJobStatusAndResult(apiKey, jobId);
+      sendJson(res, 200, jobResult);
+      logTransaction('GET', pathname, 200, Date.now() - reqStart, { jobId, status: jobResult.status });
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+      logTransaction('GET', pathname, 500, Date.now() - reqStart, { error: err.message });
+    }
+    return;
+  }
+
+  // ================= 10. ASSESSMENT & QUIZZES ENDPOINTS =================
+
+  // 10a. GET /api/quizzes (Catalog & Question Session Generation)
+  if (pathname === '/api/quizzes' && req.method === 'GET') {
+    try {
+      const topic = reqUrl.searchParams.get('topic') || 'all';
+      const difficulty = reqUrl.searchParams.get('difficulty') || 'all';
+      const limit = parseInt(reqUrl.searchParams.get('limit') || '10', 10);
+      const isCatalogOnly = reqUrl.searchParams.get('catalog') === 'true';
+
+      const catalog = quizEngine.getQuizCatalog();
+      if (isCatalogOnly) {
+        return sendJson(res, 200, { success: true, catalog });
+      }
+
+      const session = quizEngine.getQuizQuestions({ topic, difficulty, limit });
+      sendJson(res, 200, {
+        success: true,
+        catalog,
+        session
+      });
+      logTransaction('GET', pathname, 200, Date.now() - reqStart, { topic, count: session.count });
+      return;
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+      logTransaction('GET', pathname, 500, Date.now() - reqStart, { error: err.message });
+      return;
+    }
+  }
+
+  // 10b. POST /api/quizzes/submit (Automated Grading & Mathematical Explanations)
+  if (pathname === '/api/quizzes/submit' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const { answers = {}, studentId = 'std_curr_user', studentName = 'Quantum Scholar', cohortId = 'cohort_qc101' } = body;
+
+      const evalResult = quizEngine.evaluateSubmission({ answers, studentId, studentName });
+      if (!evalResult.success) {
+        return sendJson(res, 400, evalResult);
+      }
+
+      // Persist progress to instructor database
+      instructorStorage.recordStudentProgress({
+        studentId,
+        studentName,
+        cohortId,
+        quizSubmission: evalResult,
+        xpGained: evalResult.totalXpEarned
+      });
+
+      sendJson(res, 200, evalResult);
+      logTransaction('POST', pathname, 200, Date.now() - reqStart, {
+        studentId,
+        score: `${evalResult.score}/${evalResult.totalQuestions}`,
+        percentage: `${evalResult.percentage}%`
+      });
+      return;
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+      logTransaction('POST', pathname, 500, Date.now() - reqStart, { error: err.message });
+      return;
+    }
+  }
+
+  // ================= 11. INSTRUCTOR PORTAL & PROGRESS TRACKING ENDPOINTS =================
+
+  // 11a. GET /api/progress/summary (Learner Personal Progress)
+  if (pathname === '/api/progress/summary' && req.method === 'GET') {
+    const studentId = reqUrl.searchParams.get('studentId') || 'std_curr_user';
+    const progress = instructorStorage.getStudentProgress(studentId);
+    sendJson(res, 200, { success: true, ...progress });
+    logTransaction('GET', pathname, 200, Date.now() - reqStart, { studentId });
+    return;
+  }
+
+  // 11b. POST /api/progress/sync (Sync Client Coding Challenge Solves & XP)
+  if (pathname === '/api/progress/sync' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const { studentId, studentName, cohortId, challengeSolved, xpGained } = body || {};
+      const updated = instructorStorage.recordStudentProgress({
+        studentId,
+        studentName,
+        cohortId,
+        challengeSolved,
+        xpGained: Number(xpGained) || 0
+      });
+      sendJson(res, 200, { success: true, student: updated });
+      logTransaction('POST', pathname, 200, Date.now() - reqStart, { studentId, xpGained });
+      return;
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+      logTransaction('POST', pathname, 500, Date.now() - reqStart, { error: err.message });
+      return;
+    }
+  }
+
+  // 11c. GET /api/instructor/cohorts (List Active Classroom Cohorts)
+  if (pathname === '/api/instructor/cohorts' && req.method === 'GET') {
+    const cohorts = instructorStorage.getCohorts();
+    sendJson(res, 200, { success: true, count: cohorts.length, cohorts });
+    logTransaction('GET', pathname, 200, Date.now() - reqStart, { count: cohorts.length });
+    return;
+  }
+
+  // 11d. POST /api/instructor/cohorts (Create New Classroom Cohort)
+  if (pathname === '/api/instructor/cohorts' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const newCohort = instructorStorage.createCohort(body);
+      sendJson(res, 201, { success: true, cohort: newCohort });
+      logTransaction('POST', pathname, 201, Date.now() - reqStart, { code: newCohort.code });
+      return;
+    } catch (err) {
+      sendJson(res, 400, { success: false, error: err.message });
+      logTransaction('POST', pathname, 400, Date.now() - reqStart, { error: err.message });
+      return;
+    }
+  }
+
+  // 11e. GET /api/instructor/cohort/:id/students (Student Roster)
+  if (pathname.startsWith('/api/instructor/cohort/') && pathname.endsWith('/students') && req.method === 'GET') {
+    const cohortId = pathname.replace('/api/instructor/cohort/', '').replace('/students', '').trim();
+    const students = instructorStorage.getCohortStudents(cohortId);
+    sendJson(res, 200, { success: true, cohortId, count: students.length, students });
+    logTransaction('GET', pathname, 200, Date.now() - reqStart, { cohortId, count: students.length });
+    return;
+  }
+
+  // 11f. GET /api/instructor/analytics (Classroom Metrics & Misconception Breakdown)
+  if (pathname === '/api/instructor/analytics' && req.method === 'GET') {
+    const cohortId = reqUrl.searchParams.get('cohortId') || 'cohort_qc101';
+    const analytics = instructorStorage.getCohortAnalytics(cohortId);
+    sendJson(res, 200, { success: true, ...analytics });
+    logTransaction('GET', pathname, 200, Date.now() - reqStart, { cohortId, students: analytics.totalStudents });
+    return;
+  }
+
+  // 11g. POST /api/instructor/assignments (Dispatch Circuit / Quiz Assignment)
+  if (pathname === '/api/instructor/assignments' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const newAsg = instructorStorage.createAssignment(body);
+      sendJson(res, 201, { success: true, assignment: newAsg });
+      logTransaction('POST', pathname, 201, Date.now() - reqStart, { title: newAsg.title });
+      return;
+    } catch (err) {
+      sendJson(res, 400, { success: false, error: err.message });
+      logTransaction('POST', pathname, 400, Date.now() - reqStart, { error: err.message });
+      return;
+    }
+  }
+
+  // 11h. GET /api/instructor/export-gradebook (Direct Downloadable CSV Gradebook)
+  if (pathname === '/api/instructor/export-gradebook' && req.method === 'GET') {
+    const cohortId = reqUrl.searchParams.get('cohortId') || 'cohort_qc101';
+    const csvContent = instructorStorage.generateGradebookCSV(cohortId);
+    const filename = `ananta_gradebook_${cohortId}_${Date.now()}.csv`;
+
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(csvContent);
+    logTransaction('GET', pathname, 200, Date.now() - reqStart, { cohortId, sizeBytes: csvContent.length });
     return;
   }
 

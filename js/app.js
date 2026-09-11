@@ -112,6 +112,38 @@ document.addEventListener('DOMContentLoaded', () => {
     window.cloudQPUBridge = cloudQPUBridge;
   }
 
+  let qbraidBridge = null;
+  if (window.QBraidBridge) {
+    qbraidBridge = new window.QBraidBridge(engine, circuitUI);
+    window.qbraidBridge = qbraidBridge;
+  }
+
+  let instructorPortal = null;
+  if (window.InstructorPortal) {
+    instructorPortal = new window.InstructorPortal();
+    window.instructorPortal = instructorPortal;
+  }
+
+  window.switchHardwareProvider = function(provider) {
+    const tabIbm = document.getElementById('tab-provider-ibm');
+    const tabQbraid = document.getElementById('tab-provider-qbraid');
+    const panelIbm = document.getElementById('hardware-panel-ibm');
+    const panelQbraid = document.getElementById('hardware-panel-qbraid');
+    if (provider === 'qbraid') {
+      if (tabQbraid) tabQbraid.classList.add('active');
+      if (tabIbm) tabIbm.classList.remove('active');
+      if (panelQbraid) panelQbraid.style.display = 'block';
+      if (panelIbm) panelIbm.style.display = 'none';
+      if (window.qbraidBridge) window.qbraidBridge.updateDeviceTelemetry();
+    } else {
+      if (tabIbm) tabIbm.classList.add('active');
+      if (tabQbraid) tabQbraid.classList.remove('active');
+      if (panelIbm) panelIbm.style.display = 'block';
+      if (panelQbraid) panelQbraid.style.display = 'none';
+      if (window.cloudQPUBridge) window.cloudQPUBridge.updateDeviceTelemetry();
+    }
+  };
+
   // 4 Killer Differentiating Studios
   let surfaceCodeStudio = null;
   if (window.SurfaceCodeStudio) {
@@ -199,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Groups for dropdown highlights
     const studioTabs = ['surface-code', 'pulse-studio', 'transpiler', 'vqe-chemistry', 'debugger', 'cryo-twin', 'pqc-auditor'];
     const algorithmTabs = ['algorithms', 'research'];
-    const learnTabs = ['intuition', 'challenges', 'docs', 'topic-roadmap'];
+    const learnTabs = ['intuition', 'challenges', 'docs', 'topic-roadmap', 'instructor'];
 
     // Undock circuit designer from topic roadmap reader when switching away
     if (tabKey !== 'topic-roadmap' && window.topicRoadmapManager && window.topicRoadmapManager.undockCircuitDesigner) {
@@ -384,6 +416,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Refresh Quantum Maze Simulation when entering Overview tab
     if (tabKey === 'overview' && window.initQuantumMazeSim) {
       setTimeout(() => window.initQuantumMazeSim(), 60);
+    }
+
+    // Refresh Instructor Portal when entering instructor tab
+    if (tabKey === 'instructor' && window.instructorPortal) {
+      setTimeout(() => window.instructorPortal.loadCohorts(), 50);
     }
 
     // Trigger LaTeX / Math typesetter on view change
@@ -1758,6 +1795,18 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  /**
+   * Safely embeds a value as a JS string literal inside a single-quoted HTML
+   * attribute (e.g. onclick='fn(...)'). JSON.stringify handles every JS
+   * escaping concern (backslashes, double quotes, newlines) but leaves a bare
+   * apostrophe in the value — which would otherwise terminate the
+   * single-quoted attribute early on a title like "Bell's theorem" — so that
+   * one character gets HTML-entity-escaped on top.
+   */
+  function jsAttr(value) {
+    return JSON.stringify(value == null ? '' : value).replace(/'/g, '&#39;');
+  }
+
   /** Turns [P1] / [P1, P3] citation tags into links that scroll to the paper. */
   function linkCitations(text, papers) {
     const known = new Set(papers.map(p => p.id));
@@ -1863,8 +1912,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ? escapeHtml(p.abstract.length > 420 ? p.abstract.slice(0, 420) + '…' : p.abstract)
         : '<em>No abstract published for this record.</em>';
 
+      const readUrl = p.pdfUrl || p.url || '';
       return `
-        <article class="paper-card litsearch-card" id="litpaper-${p.id}">
+        <article class="paper-card litsearch-card" id="litpaper-${p.id}" style="cursor:pointer;"
+          title="Click to open and read the full paper"
+          onclick='window.openPaperReader(${jsAttr(readUrl)}, ${jsAttr(p.title)})'>
           <div class="paper-top-row">
             <span class="paper-badge badge-qml">${escapeHtml(p.id)} · ${escapeHtml(p.source)}</span>
             <span class="paper-year">${escapeHtml(p.year || '—')}</span>
@@ -1874,14 +1926,98 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="paper-venue">${meta}</div>
           <p class="paper-abstract">${abstract}</p>
           <div class="paper-actions-bar">
-            ${p.url ? `<a href="${encodeURI(p.url)}" target="_blank" rel="noopener noreferrer" class="btn-paper-pdf">Open record ↗</a>` : ''}
-            ${p.pdfUrl ? `<a href="${encodeURI(p.pdfUrl)}" target="_blank" rel="noopener noreferrer" class="btn-paper-pdf">PDF ↗</a>` : ''}
-            ${p.doi ? `<a href="https://doi.org/${encodeURIComponent(p.doi)}" target="_blank" rel="noopener noreferrer" class="btn-paper-cite">DOI</a>` : ''}
+            ${p.url ? `<a href="${encodeURI(p.url)}" target="_blank" rel="noopener noreferrer" class="btn-paper-pdf" onclick="event.stopPropagation()">Open record ↗</a>` : ''}
+            ${p.pdfUrl ? `<a href="${encodeURI(p.pdfUrl)}" target="_blank" rel="noopener noreferrer" class="btn-paper-pdf" onclick="event.stopPropagation()">PDF ↗</a>` : ''}
+            ${p.doi ? `<a href="https://doi.org/${encodeURIComponent(p.doi)}" target="_blank" rel="noopener noreferrer" class="btn-paper-cite" onclick="event.stopPropagation()">DOI</a>` : ''}
           </div>
         </article>
       `;
     }).join('');
   }
+
+  // ==========================================
+  // 8E. FULL PAPER READER — fetches the actual paper (not the abstract) and
+  // summarizes *that*, opened by clicking anywhere on a result card.
+  // ==========================================
+  let paperReaderRequestId = 0;
+
+  window.openPaperReader = async function(url, title) {
+    const modal = document.getElementById('paper-reader-modal');
+    const titleEl = document.getElementById('paper-reader-title');
+    const metaEl = document.getElementById('paper-reader-meta');
+    const statusEl = document.getElementById('paper-reader-status');
+    const fullTextEl = document.getElementById('paper-reader-fulltext');
+    const summarySection = document.getElementById('paper-reader-summary-section');
+    const summaryEl = document.getElementById('paper-reader-summary');
+    const sourceLink = document.getElementById('paper-reader-source-link');
+    if (!modal) return;
+
+    if (!url) {
+      alert('This result has no readable source link.');
+      return;
+    }
+
+    // Guards against a slow first fetch resolving after the user has already
+    // opened a second paper — without this the first paper's content could
+    // overwrite the second paper's modal after the fact.
+    const requestId = ++paperReaderRequestId;
+    const stillCurrent = () => requestId === paperReaderRequestId;
+
+    modal.style.display = 'flex';
+    titleEl.textContent = title || 'Research Paper';
+    metaEl.textContent = '';
+    statusEl.textContent = '⏳ Fetching the actual paper content…';
+    fullTextEl.textContent = '';
+    summarySection.style.display = 'none';
+    summaryEl.textContent = '';
+    sourceLink.href = url;
+
+    try {
+      const base = (window.anantaBackend && window.anantaBackend.baseUrl) || '';
+      const res = await fetch(`${base}/api/fetch-content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (!stillCurrent()) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      titleEl.textContent = data.title || title || 'Research Paper';
+      metaEl.textContent = `${data.length.toLocaleString()} characters extracted`;
+      fullTextEl.textContent = data.text || '';
+
+      statusEl.textContent = data.fullTextAvailable
+        ? '✅ Full paper text extracted.'
+        : '⚠️ Could not extract the full PDF body (it may be a scanned image or unreachable) — summarizing from whatever was retrieved.';
+
+      // Summarize what was actually retrieved, not a title.
+      statusEl.textContent += ' Generating summary…';
+      const sumRes = await fetch(`${base}/api/summarize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: data.text })
+      });
+      if (!stillCurrent()) return;
+      const sumData = await sumRes.json();
+      if (!sumRes.ok) throw new Error(sumData.error || `HTTP ${sumRes.status}`);
+
+      summaryEl.textContent = sumData.summary || '(No summary returned.)';
+      summarySection.style.display = 'block';
+      statusEl.textContent = data.fullTextAvailable
+        ? '✅ Summary generated from the full paper.'
+        : '⚠️ Summary generated from partial content — the full PDF body was not extractable for this one.';
+    } catch (err) {
+      if (!stillCurrent()) return;
+      statusEl.textContent = `❌ ${err.message}`;
+    }
+  };
+
+  window.closePaperReader = function() {
+    paperReaderRequestId++; // invalidate any in-flight fetch for this reader
+    const modal = document.getElementById('paper-reader-modal');
+    if (modal) modal.style.display = 'none';
+  };
 
   window.switchResearchMode = function(mode) {
     const views = {
@@ -2370,21 +2506,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (status) status.textContent = `Found ${lastPaperSearchResults.length} research papers for "${lastSearchQuery}":`;
 
-    container.innerHTML = lastPaperSearchResults.map((r, i) => `
-      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px; margin-bottom: 12px; transition: border-color 0.2s;">
+    container.innerHTML = lastPaperSearchResults.map((r) => {
+      const readUrl = r.link || r.pdfUrl || '';
+      return `
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px; margin-bottom: 12px; transition: border-color 0.2s; cursor: pointer;"
+        title="Click to open and read the full paper"
+        onclick='window.openPaperReader(${jsAttr(readUrl)}, ${jsAttr(r.title)})'>
         <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
-          <h4 style="margin: 0; color: #38bdf8; font-size: 14px; line-height: 1.4;">${r.title}</h4>
-          <span style="font-size: 11px; background: rgba(56,189,248,0.12); color: #38bdf8; padding: 2px 6px; border-radius: 4px; white-space: nowrap;">${r.published || 'arXiv'}</span>
+          <h4 style="margin: 0; color: #38bdf8; font-size: 14px; line-height: 1.4;">${escapeHtml(r.title)}</h4>
+          <span style="font-size: 11px; background: rgba(56,189,248,0.12); color: #38bdf8; padding: 2px 6px; border-radius: 4px; white-space: nowrap;">${escapeHtml(r.published || 'arXiv')}</span>
         </div>
-        ${r.authors ? `<div style="font-size: 11.5px; color: #a78bfa; margin-bottom: 6px;">✍ ${r.authors}</div>` : ''}
-        <p style="margin: 0 0 10px 0; color: #cbd5e1; font-size: 12px; line-height: 1.55;">${r.snippet}</p>
+        ${r.authors ? `<div style="font-size: 11.5px; color: #a78bfa; margin-bottom: 6px;">✍ ${escapeHtml(r.authors)}</div>` : ''}
+        <p style="margin: 0 0 10px 0; color: #cbd5e1; font-size: 12px; line-height: 1.55;">${escapeHtml(r.snippet)}</p>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <button onclick="window.runLivePaperExtract('${r.link || r.pdfUrl}')" style="background: linear-gradient(135deg, #7c3aed, #6366f1); color: #fff; border: none; padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">📄 Read Paper & Terms</button>
-          <button onclick="window.runLivePaperExtractAndSummarize('${r.link || r.pdfUrl}')" style="background: rgba(16,185,129,0.15); border: 1px solid #10b981; color: #34d399; padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer;">🧠 AI Summary</button>
-          <a href="${r.link || r.pdfUrl}" target="_blank" rel="noopener noreferrer" style="color: #94a3b8; font-size: 11.5px; text-decoration: underline; margin-left: auto;">View arXiv ↗</a>
+          <span style="color: #34d399; font-size: 11.5px; font-weight: 600;">📖 Click to read full paper &amp; summarize</span>
+          <a href="${encodeURI(readUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color: #94a3b8; font-size: 11.5px; text-decoration: underline; margin-left: auto;">View source ↗</a>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   };
 
   window.runLivePaperSearch = async function() {

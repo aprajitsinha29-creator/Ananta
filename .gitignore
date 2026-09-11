@@ -6,6 +6,7 @@ Thumbs.db
 *.crt
 *.pem
 *.cer
+node_modules/
 
 # Local API Keys and secrets
 # js/config.js included for deployment

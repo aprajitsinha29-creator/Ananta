@@ -30,6 +30,14 @@ if (!DEFAULT_GEMINI_KEY) {
 const ibmQuantum = require('../ananta-backend/utils/ibmQuantum');
 let IBM_QUANTUM_TOKEN = process.env.IBM_QUANTUM_TOKEN || process.env.IBM_API_KEY || '';
 
+// qBraid Multi-Provider Quantum Execution Utility
+const qbraidClient = require('../ananta-backend/utils/qbraidClient');
+let QBRAID_API_KEY = process.env.QBRAID_API_KEY || process.env.QBRAID_TOKEN || '';
+
+// Assessment & Instructor Subsystem
+const quizEngine = require('../ananta-backend/utils/quizEngine');
+const instructorStorage = require('../ananta-backend/utils/instructorStorage');
+
 // Physical Device Fleet Catalog (Baseline Reference)
 const QPU_DEVICES = ibmQuantum.REFERENCE_QPU_DEVICES;
 
@@ -170,8 +178,8 @@ module.exports = async function handler(req, res) {
     const { url } = body || {};
     if (!url) return sendJson(res, 400, { error: 'url is required' });
     try {
-      const { title, text } = await extractTextFromUrl(url);
-      return sendJson(res, 200, { url, title, length: text.length, text });
+      const { title, text, fullTextAvailable } = await extractTextFromUrl(url);
+      return sendJson(res, 200, { url, title, length: text.length, text, fullTextAvailable: Boolean(fullTextAvailable) });
     } catch (e) {
       return sendJson(res, 500, { error: 'Could not fetch/parse that URL: ' + e.message });
     }
@@ -644,6 +652,215 @@ User Question: "${message}"`;
     } catch (err) {
       return sendJson(res, 500, { success: false, error: err.message });
     }
+  }
+
+  // ================= 9. QBRAID MULTI-PROVIDER QUANTUM EXECUTION ENDPOINTS =================
+
+  // 9a. GET /api/qbraid/devices
+  if (pathname === '/api/qbraid/devices' && req.method === 'GET') {
+    const apiKey = req.headers['x-qbraid-key'] || reqUrl.searchParams.get('key') || QBRAID_API_KEY;
+    try {
+      const fleet = await qbraidClient.getLiveBackends(apiKey);
+      return sendJson(res, 200, { success: true, ...fleet });
+    } catch (err) {
+      return sendJson(res, 500, { success: false, error: err.message });
+    }
+  }
+
+  // 9b. POST /api/qbraid/auth
+  if (pathname === '/api/qbraid/auth' && req.method === 'POST') {
+    try {
+      const body = await getParsedBody(req);
+      const apiKey = body.apiKey || body.token || req.headers['x-qbraid-key'] || QBRAID_API_KEY;
+      const authRes = await qbraidClient.validateToken(apiKey);
+      return sendJson(res, authRes.valid ? 200 : 401, authRes);
+    } catch (err) {
+      return sendJson(res, 500, { valid: false, error: err.message });
+    }
+  }
+
+  // 9c. POST /api/qbraid/run
+  if (pathname === '/api/qbraid/run' && req.method === 'POST') {
+    try {
+      const body = await getParsedBody(req);
+      const {
+        backend = 'qbraid_sdk_simulator',
+        shots = 1024,
+        qasm = '',
+        numQubits = 3,
+        idealProbabilities = null,
+        mode = 'auto',
+        requireLive = false
+      } = body || {};
+
+      const apiKey = req.headers['x-qbraid-key'] || body.apiKey || body.token || QBRAID_API_KEY;
+      const isSimulator = backend.includes('simulator');
+      const shouldAttemptLive = !isSimulator && mode !== 'simulation' && Boolean(apiKey);
+
+      if (shouldAttemptLive) {
+        try {
+          const job = await qbraidClient.submitQbraidJob({ apiKey, backend, qasm, shots });
+          return sendJson(res, 200, { ...job, executionTimeMs: Math.round(Date.now() - reqStart) });
+        } catch (qbrErr) {
+          if (requireLive || mode === 'hardware') {
+            return sendJson(res, 502, { success: false, isRealHardware: true, error: `qBraid Execution Failed: ${qbrErr.message}` });
+          }
+          const simRes = qbraidClient.runSimulatedNoise({ backend, shots, numQubits, idealProbabilities, qasm });
+          simRes.fallbackReason = qbrErr.message;
+          simRes.executionTimeMs = Math.round(Date.now() - reqStart);
+          return sendJson(res, 200, simRes);
+        }
+      }
+
+      const simRes = qbraidClient.runSimulatedNoise({ backend, shots, numQubits, idealProbabilities, qasm });
+      simRes.executionTimeMs = Math.round(Date.now() - reqStart);
+      return sendJson(res, 200, simRes);
+    } catch (err) {
+      return sendJson(res, 500, { success: false, error: err.message });
+    }
+  }
+
+  // 9d. GET /api/qbraid/job/:id
+  if (pathname.startsWith('/api/qbraid/job/') && req.method === 'GET') {
+    const jobId = pathname.replace('/api/qbraid/job/', '').trim();
+    const apiKey = req.headers['x-qbraid-key'] || reqUrl.searchParams.get('key') || QBRAID_API_KEY;
+
+    if (!jobId) return sendJson(res, 400, { error: 'Job ID is required in URL path' });
+    if (jobId.startsWith('qbr_sim_')) {
+      return sendJson(res, 200, { status: 'COMPLETED', jobId, executionMode: 'SIMULATED_PHYSICAL_NOISE' });
+    }
+
+    try {
+      const jobResult = await qbraidClient.getJobStatusAndResult(apiKey, jobId);
+      return sendJson(res, 200, jobResult);
+    } catch (err) {
+      return sendJson(res, 500, { success: false, error: err.message });
+    }
+  }
+
+  // ================= 10. ASSESSMENT & QUIZZES ENDPOINTS =================
+
+  // 10a. GET /api/quizzes
+  if (pathname === '/api/quizzes' && req.method === 'GET') {
+    try {
+      const topic = reqUrl.searchParams.get('topic') || 'all';
+      const difficulty = reqUrl.searchParams.get('difficulty') || 'all';
+      const limit = parseInt(reqUrl.searchParams.get('limit') || '10', 10);
+      const isCatalogOnly = reqUrl.searchParams.get('catalog') === 'true';
+
+      const catalog = quizEngine.getQuizCatalog();
+      if (isCatalogOnly) return sendJson(res, 200, { success: true, catalog });
+
+      const session = quizEngine.getQuizQuestions({ topic, difficulty, limit });
+      return sendJson(res, 200, { success: true, catalog, session });
+    } catch (err) {
+      return sendJson(res, 500, { success: false, error: err.message });
+    }
+  }
+
+  // 10b. POST /api/quizzes/submit
+  if (pathname === '/api/quizzes/submit' && req.method === 'POST') {
+    try {
+      const body = await getParsedBody(req);
+      const { answers = {}, studentId = 'std_curr_user', studentName = 'Quantum Scholar', cohortId = 'cohort_qc101' } = body;
+      const evalResult = quizEngine.evaluateSubmission({ answers, studentId, studentName });
+      if (!evalResult.success) return sendJson(res, 400, evalResult);
+
+      instructorStorage.recordStudentProgress({
+        studentId,
+        studentName,
+        cohortId,
+        quizSubmission: evalResult,
+        xpGained: evalResult.totalXpEarned
+      });
+      return sendJson(res, 200, evalResult);
+    } catch (err) {
+      return sendJson(res, 500, { success: false, error: err.message });
+    }
+  }
+
+  // ================= 11. INSTRUCTOR PORTAL & PROGRESS TRACKING ENDPOINTS =================
+
+  // 11a. GET /api/progress/summary
+  if (pathname === '/api/progress/summary' && req.method === 'GET') {
+    const studentId = reqUrl.searchParams.get('studentId') || 'std_curr_user';
+    const progress = instructorStorage.getStudentProgress(studentId);
+    return sendJson(res, 200, { success: true, ...progress });
+  }
+
+  // 11b. POST /api/progress/sync
+  if (pathname === '/api/progress/sync' && req.method === 'POST') {
+    try {
+      const body = await getParsedBody(req);
+      const { studentId, studentName, cohortId, challengeSolved, xpGained } = body || {};
+      const updated = instructorStorage.recordStudentProgress({
+        studentId,
+        studentName,
+        cohortId,
+        challengeSolved,
+        xpGained: Number(xpGained) || 0
+      });
+      return sendJson(res, 200, { success: true, student: updated });
+    } catch (err) {
+      return sendJson(res, 500, { success: false, error: err.message });
+    }
+  }
+
+  // 11c. GET /api/instructor/cohorts
+  if (pathname === '/api/instructor/cohorts' && req.method === 'GET') {
+    const cohorts = instructorStorage.getCohorts();
+    return sendJson(res, 200, { success: true, count: cohorts.length, cohorts });
+  }
+
+  // 11d. POST /api/instructor/cohorts
+  if (pathname === '/api/instructor/cohorts' && req.method === 'POST') {
+    try {
+      const body = await getParsedBody(req);
+      const newCohort = instructorStorage.createCohort(body);
+      return sendJson(res, 201, { success: true, cohort: newCohort });
+    } catch (err) {
+      return sendJson(res, 400, { success: false, error: err.message });
+    }
+  }
+
+  // 11e. GET /api/instructor/cohort/:id/students
+  if (pathname.startsWith('/api/instructor/cohort/') && pathname.endsWith('/students') && req.method === 'GET') {
+    const cohortId = pathname.replace('/api/instructor/cohort/', '').replace('/students', '').trim();
+    const students = instructorStorage.getCohortStudents(cohortId);
+    return sendJson(res, 200, { success: true, cohortId, count: students.length, students });
+  }
+
+  // 11f. GET /api/instructor/analytics
+  if (pathname === '/api/instructor/analytics' && req.method === 'GET') {
+    const cohortId = reqUrl.searchParams.get('cohortId') || 'cohort_qc101';
+    const analytics = instructorStorage.getCohortAnalytics(cohortId);
+    return sendJson(res, 200, { success: true, ...analytics });
+  }
+
+  // 11g. POST /api/instructor/assignments
+  if (pathname === '/api/instructor/assignments' && req.method === 'POST') {
+    try {
+      const body = await getParsedBody(req);
+      const newAsg = instructorStorage.createAssignment(body);
+      return sendJson(res, 201, { success: true, assignment: newAsg });
+    } catch (err) {
+      return sendJson(res, 400, { success: false, error: err.message });
+    }
+  }
+
+  // 11h. GET /api/instructor/export-gradebook
+  if (pathname === '/api/instructor/export-gradebook' && req.method === 'GET') {
+    const cohortId = reqUrl.searchParams.get('cohortId') || 'cohort_qc101';
+    const csvContent = instructorStorage.generateGradebookCSV(cohortId);
+    const filename = `ananta_gradebook_${cohortId}_${Date.now()}.csv`;
+
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(csvContent);
+    return;
   }
 
   // 404 for unknown API route

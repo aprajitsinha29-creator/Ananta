@@ -207,6 +207,16 @@
                 <span class="dropdown-rich-desc">Gamified circuit puzzles, skill tree & quantum achievement badges</span>
               </div>
             </a>
+            <a href="#instructor" class="dropdown-rich-item" data-tab="instructor">
+              <span class="dropdown-rich-icon">🎓</span>
+              <div class="dropdown-rich-info">
+                <div class="dropdown-rich-title-line">
+                  <span class="dropdown-rich-title">Instructor Portal & Quizzes</span>
+                  <span class="dropdown-badge" style="background:#0284c7;color:#fff">ASSESSMENT</span>
+                </div>
+                <span class="dropdown-rich-desc">Classroom cohort metrics, conceptual quiz grading & CSV gradebook</span>
+              </div>
+            </a>
           </div>
         </div>
       </nav>
@@ -1972,72 +1982,238 @@
     <section class="viewport-section" id="view-challenges">
       <div class="standard-page-container challenges-page-container">
 
-        <!-- Arena Hero Banner -->
-        <div class="challenges-hero-banner">
-          <div class="challenges-pill-tag">
-            <span>🎮</span> Gamified Quantum Mastery
-          </div>
-          <div class="arena-hero-title-row">
-            <div>
-              <h1 class="challenges-hero-title">Quantum Puzzle Arena & Mastery Roadmap</h1>
-              <p class="challenges-hero-desc">
-                Synthesize target quantum states, entangle registers, and master unitary transformations by constructing minimal gate sequences. Each puzzle verifies physical Born rule probabilities in real-time.
-              </p>
-            </div>
-            <button class="btn-reset-puzzles" onclick="if(window.missionManager) window.missionManager.resetProgress();" title="Reset puzzle solved progress">
-              Reset Progress ↺
-            </button>
-          </div>
+        <!-- Assessment Mode Selector Tabs -->
+        <div class="assessment-mode-selector-bar">
+          <button type="button" class="assessment-mode-tab-btn active" id="btn-view-challenges-mode">
+            🎮 Circuit Coding Challenges (8 Missions)
+          </button>
+          <button type="button" class="assessment-mode-tab-btn" id="btn-view-quizzes-mode">
+            📝 Conceptual Quizzes &amp; Automated Grading (5 Core Domains)
+          </button>
+        </div>
 
-          <!-- Player Progress & Mastery Scoreboard -->
-          <div class="arena-stats-dashboard">
-            <div class="arena-stat-card">
-              <span class="arena-stat-label">Puzzles Completed</span>
-              <div class="arena-stat-val" id="missions-progress-label">0 / 8 Solved (0%)</div>
-              <div class="arena-progress-track">
-                <div class="arena-progress-fill" id="missions-progress-fill" style="width: 0%"></div>
+        <!-- 1. Challenges / Missions Container -->
+        <div id="challenges-puzzles-container">
+          <!-- Arena Hero Banner -->
+          <div class="challenges-hero-banner">
+            <div class="challenges-pill-tag">
+              <span>🎮</span> Gamified Quantum Mastery
+            </div>
+            <div class="arena-hero-title-row">
+              <div>
+                <h1 class="challenges-hero-title">Quantum Puzzle Arena & Mastery Roadmap</h1>
+                <p class="challenges-hero-desc">
+                  Synthesize target quantum states, entangle registers, and master unitary transformations by constructing minimal gate sequences. Each puzzle verifies physical Born rule probabilities in real-time.
+                </p>
+              </div>
+              <button class="btn-reset-puzzles" onclick="if(window.missionManager) window.missionManager.resetProgress();" title="Reset puzzle solved progress">
+                Reset Progress ↺
+              </button>
+            </div>
+
+            <!-- Player Progress & Mastery Scoreboard -->
+            <div class="arena-stats-dashboard">
+              <div class="arena-stat-card">
+                <span class="arena-stat-label">Puzzles Completed</span>
+                <div class="arena-stat-val" id="missions-progress-label">0 / 8 Solved (0%)</div>
+                <div class="arena-progress-track">
+                  <div class="arena-progress-fill" id="missions-progress-fill" style="width: 0%"></div>
+                </div>
+              </div>
+
+              <div class="arena-stat-card">
+                <span class="arena-stat-label">Total Mastery Score</span>
+                <div class="arena-stat-val arena-xp-val" id="player-xp-counter">0 XP</div>
+                <span class="arena-stat-sub">Earn +50 to +200 XP per solved puzzle</span>
+              </div>
+
+              <div class="arena-stat-card">
+                <span class="arena-stat-label">Current Player Rank</span>
+                <div class="arena-stat-val arena-rank-val" id="challenges-rank-label">Novice Quantum Observer 🔬</div>
+                <span class="arena-stat-sub">Solve 6+ puzzles for Quantum Algorithm Engineer</span>
               </div>
             </div>
 
-            <div class="arena-stat-card">
-              <span class="arena-stat-label">Total Mastery Score</span>
-              <div class="arena-stat-val arena-xp-val" id="player-xp-counter">0 XP</div>
-              <span class="arena-stat-sub">Earn +50 to +200 XP per solved puzzle</span>
-            </div>
-
-            <div class="arena-stat-card">
-              <span class="arena-stat-label">Current Player Rank</span>
-              <div class="arena-stat-val arena-rank-val" id="challenges-rank-label">Novice Quantum Observer 🔬</div>
-              <span class="arena-stat-sub">Solve 6+ puzzles for Quantum Algorithm Engineer</span>
+            <!-- Difficulty Filter Tabs -->
+            <div class="puzzle-filter-tabs">
+              <button class="puzzle-filter-btn active" data-tier="all" onclick="if(window.missionManager) window.missionManager.setFilter('all')">All Puzzles (8)</button>
+              <button class="puzzle-filter-btn" data-tier="beginner" onclick="if(window.missionManager) window.missionManager.setFilter('beginner')">Beginner (3)</button>
+              <button class="puzzle-filter-btn" data-tier="intermediate" onclick="if(window.missionManager) window.missionManager.setFilter('intermediate')">Intermediate (3)</button>
+              <button class="puzzle-filter-btn" data-tier="advanced" onclick="if(window.missionManager) window.missionManager.setFilter('advanced')">Advanced (2)</button>
             </div>
           </div>
 
-          <!-- Difficulty Filter Tabs -->
-          <div class="puzzle-filter-tabs">
-            <button class="puzzle-filter-btn active" data-tier="all" onclick="if(window.missionManager) window.missionManager.setFilter('all')">All Puzzles (8)</button>
-            <button class="puzzle-filter-btn" data-tier="beginner" onclick="if(window.missionManager) window.missionManager.setFilter('beginner')">Beginner (3)</button>
-            <button class="puzzle-filter-btn" data-tier="intermediate" onclick="if(window.missionManager) window.missionManager.setFilter('intermediate')">Intermediate (3)</button>
-            <button class="puzzle-filter-btn" data-tier="advanced" onclick="if(window.missionManager) window.missionManager.setFilter('advanced')">Advanced (2)</button>
+          <!-- Puzzles Grid (Populated by algorithms.js) -->
+          <div class="challenges-puzzles-grid" id="missions-list">
+            <!-- Rendered dynamically by MissionManager -->
+          </div>
+
+          <!-- Gamified Skill Tree (Black Opal Style) -->
+          <div class="skill-tree-section">
+            <div class="skill-tree-header">
+              <div class="skill-tree-title-box">
+                <span class="hw-badge">🏆 Quantum Skill Tree & Achievements</span>
+                <h3>Hardware & Theoretical Mastery Unlocks</h3>
+                <p class="skill-tree-sub">Complete real-time operations in the Composer to unlock persistent achievements across superposition, entanglement, and noise mitigation.</p>
+              </div>
+            </div>
+
+            <div id="skill-tree-nodes" class="skill-tree-grid">
+              <!-- Rendered by hardware-control.js -->
+            </div>
           </div>
         </div>
 
-        <!-- Puzzles Grid (Populated by algorithms.js) -->
-        <div class="challenges-puzzles-grid" id="missions-list">
-          <!-- Rendered dynamically by MissionManager -->
-        </div>
+        <!-- 2. Quizzes Assessment Container -->
+        <div id="quizzes-assessment-container" style="display: none;">
+          <!-- Catalog View -->
+          <div id="quiz-catalog-view">
+            <div class="challenges-hero-banner">
+              <div class="challenges-pill-tag" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);">
+                <span>📝</span> Conceptual Knowledge Verification
+              </div>
+              <div class="arena-hero-title-row">
+                <div>
+                  <h1 class="challenges-hero-title">Quantum Assessment &amp; Automated Grading Engine</h1>
+                  <p class="challenges-hero-desc">
+                    Evaluate your mathematical and theoretical mastery across Hilbert space linear algebra, Pauli unitaries, Bell states, quantum algorithms, and fault-tolerant surface codes. Submissions are instantly evaluated with rigorous proofs.
+                  </p>
+                </div>
+              </div>
+            </div>
 
-        <!-- Gamified Skill Tree (Black Opal Style) -->
-        <div class="skill-tree-section">
-          <div class="skill-tree-header">
-            <div class="skill-tree-title-box">
-              <span class="hw-badge">🏆 Quantum Skill Tree & Achievements</span>
-              <h3>Hardware & Theoretical Mastery Unlocks</h3>
-              <p class="skill-tree-sub">Complete real-time operations in the Composer to unlock persistent achievements across superposition, entanglement, and noise mitigation.</p>
+            <div class="quiz-domains-grid" id="quiz-domains-list">
+              <!-- Populated by instructor-portal.js -->
             </div>
           </div>
 
-          <div id="skill-tree-nodes" class="skill-tree-grid">
-            <!-- Rendered by hardware-control.js -->
+          <!-- Active Question Runner View -->
+          <div id="quiz-active-runner-view" style="display: none;">
+            <!-- Rendered dynamically by instructor-portal.js -->
+          </div>
+
+          <!-- Graded Results & Proofs View -->
+          <div id="quiz-results-view" style="display: none;">
+            <!-- Rendered dynamically by instructor-portal.js -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================= VIEW: INSTRUCTOR PORTAL & CLASSROOM ANALYTICS ================= -->
+    <section class="viewport-section" id="view-instructor" style="display: none;">
+      <div class="standard-page-container instructor-page-container">
+
+        <!-- Instructor Hero Banner -->
+        <div class="instructor-hero-banner">
+          <div class="challenges-pill-tag" style="background: rgba(2, 132, 199, 0.15); color: #38bdf8; border-color: rgba(2, 132, 199, 0.3);">
+            <span>🎓</span> Academic Workforce &amp; Classroom Management
+          </div>
+          <div class="arena-hero-title-row">
+            <div>
+              <h1 class="challenges-hero-title">Quantum Classroom Instructor Portal &amp; Cohort Analytics</h1>
+              <p class="challenges-hero-desc">
+                Monitor university class cohorts, review automated circuit grading fidelities, inspect concept misconception error heatmaps, and download accreditation-ready gradebooks.
+              </p>
+            </div>
+            <div class="instructor-hero-actions">
+              <button type="button" class="btn-instructor-action btn-primary-cohort" id="btn-create-cohort-modal">
+                ➕ New Cohort
+              </button>
+              <button type="button" class="btn-instructor-action btn-dispatch-asg" id="btn-dispatch-assignment-modal">
+                📋 Dispatch Assignment
+              </button>
+              <button type="button" class="btn-instructor-action btn-export-csv" id="btn-export-gradebook-csv">
+                📥 Export Gradebook (CSV)
+              </button>
+            </div>
+          </div>
+
+          <!-- Cohort Selector Header -->
+          <div class="instructor-cohort-selector-bar">
+            <span class="selector-label">Active Classroom Cohort:</span>
+            <select id="instructor-cohort-select" class="instructor-cohort-dropdown">
+              <!-- Populated by instructor-portal.js -->
+            </select>
+          </div>
+
+          <!-- Class KPI Performance Dashboard -->
+          <div class="arena-stats-dashboard">
+            <div class="arena-stat-card">
+              <span class="arena-stat-label">Enrolled Students</span>
+              <div class="arena-stat-val" id="kpi-total-students">0</div>
+              <span class="arena-stat-sub">Active Quantum Learners</span>
+            </div>
+            <div class="arena-stat-card">
+              <span class="arena-stat-label">Class Average Score</span>
+              <div class="arena-stat-val arena-xp-val" id="kpi-avg-score">0%</div>
+              <span class="arena-stat-sub">Automated Quiz &amp; Challenge Average</span>
+            </div>
+            <div class="arena-stat-card">
+              <span class="arena-stat-label">Circuit Challenges Solved</span>
+              <div class="arena-stat-val" id="kpi-total-challenges">0</div>
+              <span class="arena-stat-sub">Cumulative Statevector Solves</span>
+            </div>
+            <div class="arena-stat-card">
+              <span class="arena-stat-label">Quizzes Completed</span>
+              <div class="arena-stat-val arena-rank-val" id="kpi-total-quizzes">0</div>
+              <span class="arena-stat-sub">Auto-graded submissions</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instructor Content Layout (Two Columns) -->
+        <div class="instructor-content-grid" id="instructor-analytics-content">
+          <!-- Left Column: Enrolled Students Roster -->
+          <div class="instructor-card instructor-roster-card">
+            <div class="instructor-card-header">
+              <h3>Enrolled Students Roster &amp; Progress</h3>
+              <span style="font-size:12px; color:#94a3b8;">Real-time automated evaluation logs</span>
+            </div>
+            <div class="instructor-table-wrapper">
+              <table class="instructor-roster-table">
+                <thead>
+                  <tr>
+                    <th>Student Name &amp; Email</th>
+                    <th>Puzzles</th>
+                    <th>Quizzes</th>
+                    <th>Avg Score</th>
+                    <th>XP</th>
+                    <th>Grade</th>
+                    <th>Last Active</th>
+                  </tr>
+                </thead>
+                <tbody id="instructor-roster-tbody">
+                  <!-- Populated by instructor-portal.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right Column: Analytics & Misconceptions -->
+          <div class="instructor-side-column">
+            <!-- Common Misconceptions Diagnostic -->
+            <div class="instructor-card">
+              <div class="instructor-card-header">
+                <h3>Detected Concept Misconceptions</h3>
+                <span class="hw-badge" style="background:#ef4444;color:#fff;">Concept Doctor</span>
+              </div>
+              <div class="misconceptions-list" id="instructor-misconceptions-list">
+                <!-- Populated by instructor-portal.js -->
+              </div>
+            </div>
+
+            <!-- Grade Distribution Breakdown -->
+            <div class="instructor-card">
+              <div class="instructor-card-header">
+                <h3>Cohort Grade Distribution</h3>
+                <span style="font-size:12px; color:#94a3b8;">Weighted GPA Curve</span>
+              </div>
+              <div class="grade-distribution-container" id="instructor-grade-distribution">
+                <!-- Populated by instructor-portal.js -->
+              </div>
+            </div>
           </div>
         </div>
 
@@ -3614,6 +3790,35 @@ Key Advantage:
     </div>
   </div>
 
+  <!-- Full Paper Reader Modal: opens on clicking a result card, fetches the -->
+  <!-- actual paper text (not just its abstract) and summarizes that.       -->
+  <div class="bibtex-modal-backdrop" id="paper-reader-modal" style="display:none;">
+    <div class="bibtex-modal-dialog" style="max-width: 880px; width: 94%; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="bibtex-modal-header">
+        <h3 id="paper-reader-title" style="margin:0; font-size: 16px; line-height: 1.4;">Loading…</h3>
+        <button class="btn-close-modal" onclick="window.closePaperReader()">✕</button>
+      </div>
+      <div class="bibtex-modal-body" style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 18px;">
+        <div id="paper-reader-meta" style="font-size: 12px; color: var(--text-dim);"></div>
+        <div id="paper-reader-status" style="font-size: 13px; color: #38bdf8;"></div>
+
+        <section id="paper-reader-summary-section" style="display:none;">
+          <h4 style="margin: 0 0 8px; font-size: 13px; color: #34d399; text-transform: uppercase; letter-spacing: 0.5px;">🧠 AI Summary (of the actual paper, not just the abstract)</h4>
+          <p id="paper-reader-summary" style="font-size: 14px; line-height: 1.7; color: var(--text-white); white-space: pre-wrap;"></p>
+        </section>
+
+        <section>
+          <h4 style="margin: 0 0 8px; font-size: 13px; color: #a855f7; text-transform: uppercase; letter-spacing: 0.5px;">📄 Extracted Paper Text</h4>
+          <pre id="paper-reader-fulltext" style="white-space: pre-wrap; font-family: var(--font-mono, monospace); font-size: 12px; line-height: 1.6; color: #cbd5e1; max-height: 340px; overflow-y: auto; background: rgba(0,0,0,0.25); padding: 12px; border-radius: 8px; margin: 0;"></pre>
+        </section>
+      </div>
+      <div class="bibtex-modal-footer">
+        <a id="paper-reader-source-link" href="#" target="_blank" rel="noopener noreferrer" style="font-size: 12px; color: #38bdf8; margin-right: auto;">View original source ↗</a>
+        <button class="btn-cancel-oauth" onclick="window.closePaperReader()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Interactive Gate Educational Mechanism Floating Card -->
   <div class="gate-edu-card" id="gate-edu-card" style="display: none;">
     <div class="gate-edu-header">
@@ -3630,78 +3835,139 @@ Key Advantage:
     <div class="gate-edu-wave-preview" id="edu-gate-wave"></div>
   </div>
 
-  <!-- IBM Quantum Hardware Bridge Modal -->
+  <!-- Multi-Provider Quantum Hardware Bridge Modal (IBM Quantum & qBraid) -->
   <div id="cloud-qpu-modal" class="cloud-qpu-modal-backdrop" style="display: none;">
     <div class="cloud-qpu-modal-dialog">
       <div class="cloud-qpu-modal-header">
         <div class="modal-title-group">
           <span class="qpu-chip-icon">⚛️</span>
           <div>
-            <h3>IBM Quantum Physical QPU Bridge</h3>
-            <p class="modal-subtitle">Direct Cloud Execution on Superconducting Quantum Processors &amp; OpenQASM 3.0</p>
+            <h3>Quantum Hardware &amp; Cloud Bridge</h3>
+            <p class="modal-subtitle">Direct Cloud Execution on IBM Quantum &amp; qBraid Multi-Provider Ecosystem</p>
           </div>
         </div>
         <button type="button" class="btn-step-modal-close" id="btn-close-qpu-modal" style="background:transparent; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
       </div>
 
       <div class="cloud-qpu-modal-body">
-        <!-- Section 1: IBM Quantum API Key -->
-        <div class="qpu-config-section">
-          <div class="qpu-section-title-row">
-            <strong>IBM Quantum API Token</strong>
-            <span id="ibm-token-status" class="status-pill status-warn">⚠️ No Token (Simulated Mode)</span>
-          </div>
-          <div class="token-input-row">
-            <input type="password" id="ibm-api-token-input" class="token-input" placeholder="Paste your IBM Quantum API Token..." />
-            <button type="button" class="btn-token-action btn-save" id="btn-save-ibm-token">Save Key</button>
-            <button type="button" class="btn-token-action btn-clear" id="btn-clear-ibm-token">Clear</button>
-          </div>
-          <div class="token-hint-text">
-            <span>Stored securely in local browser storage.</span>
-            <a href="https://quantum.ibm.com/account" target="_blank" rel="noopener noreferrer">Get token from IBM Quantum Platform ↗</a>
-          </div>
-        </div>
-
-        <!-- Section 2: QPU Backend Selection -->
-        <div class="qpu-config-section">
-          <div class="qpu-section-title-row">
-            <strong>Target Quantum Processor / Backend</strong>
-            <span style="font-size:11px; color:#64748b;">Live calibrated physical telemetry</span>
-          </div>
-          <select id="ibm-backend-select" class="backend-select-dropdown">
-            <option value="ibm_brisbane">ibm_brisbane (127 Qubits | Eagle r3 | Median T₁=284µs, T₂=168µs)</option>
-            <option value="ibm_kyoto">ibm_kyoto (127 Qubits | Eagle r3 | Median T₁=242µs, T₂=134µs)</option>
-            <option value="ibm_sherbrooke">ibm_sherbrooke (127 Qubits | Eagle r3 | Median T₁=295µs, T₂=175µs)</option>
-            <option value="ibm_osaka">ibm_osaka (127 Qubits | Eagle r3 | Median T₁=260µs, T₂=145µs)</option>
-            <option value="simulator_mps">simulator_mps (100 Qubits | Matrix Product State Cloud Simulator)</option>
-          </select>
-        </div>
-
-        <!-- Section 3: Live Device Calibration Telemetry -->
-        <div class="device-telemetry-card" id="device-telemetry-card">
-          <!-- Populated dynamically by CloudQPUBridge.updateDeviceTelemetry() -->
-        </div>
-
-        <!-- Section 4: Execution Dispatch Actions -->
-        <div class="qpu-dispatch-row">
-          <button type="button" class="btn-run-qpu-primary" id="btn-dispatch-qpu-job">
-            ⚡ Run Physical Job (1,024 Shots)
+        <!-- Hardware Provider Switcher Tabs -->
+        <div class="hardware-provider-tabs">
+          <button type="button" class="hw-provider-tab active" id="tab-provider-ibm" onclick="window.switchHardwareProvider && window.switchHardwareProvider('ibm')">
+            ⚛️ IBM Quantum (127Q Eagle)
           </button>
-          <button type="button" class="btn-colab-launch" id="btn-open-in-colab" title="Download executable Jupyter notebook (.ipynb) with your token and circuit ready for Google Colab">
-            📙 Open in Google Colab
-          </button>
-          <button type="button" class="btn-copy-qiskit" id="btn-copy-qiskit-runtime-code" title="Copy standalone Qiskit Runtime Python script">
-            📋 Copy Python Script
+          <button type="button" class="hw-provider-tab" id="tab-provider-qbraid" onclick="window.switchHardwareProvider && window.switchHardwareProvider('qbraid')">
+            🌐 qBraid Multi-Provider (AWS, QuEra, IonQ, Rigetti, OQC)
           </button>
         </div>
 
-        <!-- Job Status Banner -->
-        <div id="qpu-job-status-banner" style="display: none;"></div>
+        <!-- ================= PANEL 1: IBM QUANTUM ================= -->
+        <div id="hardware-panel-ibm">
+          <!-- Section 1: IBM Quantum API Key -->
+          <div class="qpu-config-section">
+            <div class="qpu-section-title-row">
+              <strong>IBM Quantum API Token</strong>
+              <span id="ibm-token-status" class="status-pill status-warn">⚠️ No Token (Simulated Mode)</span>
+            </div>
+            <div class="token-input-row">
+              <input type="password" id="ibm-api-token-input" class="token-input" placeholder="Paste your IBM Quantum API Token..." />
+              <button type="button" class="btn-token-action btn-save" id="btn-save-ibm-token">Save Key</button>
+              <button type="button" class="btn-token-action btn-clear" id="btn-clear-ibm-token">Clear</button>
+            </div>
+            <div class="token-hint-text">
+              <span>Stored securely in local browser storage.</span>
+              <a href="https://quantum.ibm.com/account" target="_blank" rel="noopener noreferrer">Get token from IBM Quantum Platform ↗</a>
+            </div>
+          </div>
 
-        <!-- Execution Results & Comparison Histogram -->
-        <div id="qpu-hardware-results-container" class="qpu-results-container" style="display: none;">
-          <!-- Populated dynamically with Ideal vs Physical measurement distributions -->
+          <!-- Section 2: QPU Backend Selection -->
+          <div class="qpu-config-section">
+            <div class="qpu-section-title-row">
+              <strong>Target Quantum Processor / Backend</strong>
+              <span style="font-size:11px; color:#64748b;">Live calibrated physical telemetry</span>
+            </div>
+            <select id="ibm-backend-select" class="backend-select-dropdown">
+              <option value="ibm_brisbane">ibm_brisbane (127 Qubits | Eagle r3 | Median T₁=284µs, T₂=168µs)</option>
+              <option value="ibm_kyoto">ibm_kyoto (127 Qubits | Eagle r3 | Median T₁=242µs, T₂=134µs)</option>
+              <option value="ibm_sherbrooke">ibm_sherbrooke (127 Qubits | Eagle r3 | Median T₁=295µs, T₂=175µs)</option>
+              <option value="ibm_osaka">ibm_osaka (127 Qubits | Eagle r3 | Median T₁=260µs, T₂=145µs)</option>
+              <option value="simulator_mps">simulator_mps (100 Qubits | Matrix Product State Cloud Simulator)</option>
+            </select>
+          </div>
+
+          <!-- Section 3: Live Device Calibration Telemetry -->
+          <div class="device-telemetry-card" id="device-telemetry-card">
+            <!-- Populated dynamically by CloudQPUBridge.updateDeviceTelemetry() -->
+          </div>
+
+          <!-- Section 4: Execution Dispatch Actions -->
+          <div class="qpu-dispatch-row">
+            <button type="button" class="btn-run-qpu-primary" id="btn-dispatch-qpu-job">
+              ⚡ Run Physical Job (1,024 Shots)
+            </button>
+            <button type="button" class="btn-colab-launch" id="btn-open-in-colab" title="Download executable Jupyter notebook (.ipynb) with your token and circuit ready for Google Colab">
+              📙 Open in Google Colab
+            </button>
+            <button type="button" class="btn-copy-qiskit" id="btn-copy-qiskit-runtime-code" title="Copy standalone Qiskit Runtime Python script">
+              📋 Copy Python Script
+            </button>
+          </div>
+
+          <!-- Job Status Banner -->
+          <div id="qpu-job-status-banner" style="display: none;"></div>
+
+          <!-- Execution Results & Comparison Histogram -->
+          <div id="qpu-hardware-results-container" class="qpu-results-container" style="display: none;"></div>
         </div>
+
+        <!-- ================= PANEL 2: QBRAID MULTI-PROVIDER ================= -->
+        <div id="hardware-panel-qbraid" style="display: none;">
+          <!-- Section 1: qBraid API Key -->
+          <div class="qpu-config-section">
+            <div class="qpu-section-title-row">
+              <strong>qBraid API Key</strong>
+              <span id="qbraid-token-status" class="status-pill status-warn">⚠️ No Key (Simulated Physics Mode)</span>
+            </div>
+            <div class="token-input-row">
+              <input type="password" id="qbraid-api-token-input" class="token-input" placeholder="Paste your qBraid API Key..." />
+              <button type="button" class="btn-token-action btn-save" id="btn-save-qbraid-token">Save Key</button>
+              <button type="button" class="btn-token-action btn-clear" id="btn-clear-qbraid-token">Clear</button>
+            </div>
+            <div class="token-hint-text">
+              <span>Connects to AWS Braket, QuEra Aquila, IonQ, and Rigetti.</span>
+              <a href="https://account.qbraid.com" target="_blank" rel="noopener noreferrer">Get API Key from qBraid Account ↗</a>
+            </div>
+          </div>
+
+          <!-- Section 2: qBraid Backend Selection -->
+          <div class="qpu-config-section">
+            <div class="qpu-section-title-row">
+              <strong>qBraid Target Device / Processor</strong>
+              <span style="font-size:11px; color:#64748b;">Multi-architecture quantum hardware</span>
+            </div>
+            <select id="qbraid-backend-select" class="backend-select-dropdown">
+              <!-- Populated dynamically by qbraid-bridge.js -->
+            </select>
+          </div>
+
+          <!-- Section 3: qBraid Device Telemetry -->
+          <div class="device-telemetry-card" id="qbraid-telemetry-card">
+            <!-- Populated dynamically by qbraid-bridge.js -->
+          </div>
+
+          <!-- Section 4: qBraid Execution Dispatch -->
+          <div class="qpu-dispatch-row">
+            <button type="button" class="btn-run-qpu-primary" id="btn-dispatch-qbraid-job" style="background: linear-gradient(135deg, #0284c7, #06b6d4);">
+              ⚡ Run on qBraid (1,024 Shots)
+            </button>
+          </div>
+
+          <!-- Job Status Banner -->
+          <div id="qbraid-job-status-banner" style="display: none;"></div>
+
+          <!-- Execution Results & Comparison Histogram -->
+          <div id="qbraid-hardware-results-container" class="qpu-results-container" style="display: none;"></div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -4015,6 +4281,8 @@ Key Advantage:
   <script src="js/vqe-chemistry.js"></script>
   <script src="js/pulse-studio.js"></script>
   <script src="js/cloud-qpu-bridge.js"></script>
+  <script src="js/qbraid-bridge.js"></script>
+  <script src="js/instructor-portal.js"></script>
   <script src="js/topic-roadmap.js"></script>
   <script src="js/quantum-debugger.js"></script>
   <script src="js/cryo-twin.js"></script>
