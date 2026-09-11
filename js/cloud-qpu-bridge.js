@@ -369,20 +369,32 @@ class CloudQPUBridge {
     let qasm = `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[${numQ}] q;\nbit[${numQ}] c;\n\n`;
 
     for (let c = 0; c < numC; c++) {
-      // Check 2-qubit CNOT gates
-      let ctrl = -1, tgt = -1;
+      // Detect controls/target/swap wires the same way runCircuitUpToCol and
+      // quantum-engine.js's toQASM do, so a Toffoli (2 controls + 1 target)
+      // and SWAP are emitted correctly instead of being silently dropped.
+      const controls = [];
+      const swapWires = [];
+      let cnotTarget = -1;
       for (let q = 0; q < numQ; q++) {
-        if (grid[q][c] === 'CX_CTRL') ctrl = q;
-        if (grid[q][c] === 'CX_TGT') tgt = q;
-      }
-      if (ctrl !== -1 && tgt !== -1) {
-        qasm += `cx q[${ctrl}], q[${tgt}];\n`;
+        const cell = grid[q][c];
+        if (cell === 'CX_CTRL') controls.push(q);
+        else if (cell === 'CX_TGT') cnotTarget = q;
+        else if (cell === 'SWAP') swapWires.push(q);
       }
 
-      // Check single-qubit gates
+      if (controls.length === 2 && cnotTarget !== -1) {
+        qasm += `ccx q[${controls[0]}], q[${controls[1]}], q[${cnotTarget}];\n`;
+      } else if (controls.length === 1 && cnotTarget !== -1) {
+        qasm += `cx q[${controls[0]}], q[${cnotTarget}];\n`;
+      }
+      if (swapWires.length === 2) {
+        qasm += `swap q[${swapWires[0]}], q[${swapWires[1]}];\n`;
+      }
+
+      // Single-qubit gates
       for (let q = 0; q < numQ; q++) {
         const g = grid[q][c];
-        if (!g || g === 'CX_CTRL' || g === 'CX_TGT') continue;
+        if (!g || g === 'CX_CTRL' || g === 'CX_TGT' || g === 'SWAP' || g === 'M') continue;
         if (g === 'H') qasm += `h q[${q}];\n`;
         else if (g === 'X') qasm += `x q[${q}];\n`;
         else if (g === 'Y') qasm += `y q[${q}];\n`;

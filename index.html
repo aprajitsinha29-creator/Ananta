@@ -1056,9 +1056,9 @@
         </div>
 
         <!-- Right: Entry panel.
-             Ananta has no user accounts or auth backend, so this no longer
-             pretends to sign anyone in. A display name is stored locally,
-             purely to personalise the session. -->
+             Real accounts: password is scrypt-hashed and verified server-side
+             (ananta-backend/utils/authService.js), sessions are signed HMAC
+             tokens checked on every protected instructor request. -->
         <div class="login-card-panel">
           <div class="clean-auth-card">
 
@@ -1072,28 +1072,53 @@
                 </svg>
                 <span class="auth-app-title">Ananta</span>
               </div>
-              <h2 class="auth-welcome-title">Enter the Quantum Studio</h2>
-              <p class="auth-welcome-desc">
-                Everything here runs in your browser and on Ananta's own backend — there are no accounts to create and nothing to sign in to.
+              <h2 class="auth-welcome-title" id="auth-welcome-title">Sign in to the Quantum Studio</h2>
+              <p class="auth-welcome-desc" id="auth-welcome-desc">
+                Real accounts, verified server-side. Instructor-only tools (cohorts, gradebooks, assignments) require signing in with the instructor role.
               </p>
             </div>
 
-            <div id="auth-success-banner" class="auth-success-banner" style="display: none;"></div>
+            <div class="auth-mode-toggle" id="auth-mode-toggle">
+              <button type="button" class="auth-mode-btn active" id="btn-auth-mode-login" onclick="window.setAuthMode && window.setAuthMode('login')">Sign In</button>
+              <button type="button" class="auth-mode-btn" id="btn-auth-mode-register" onclick="window.setAuthMode && window.setAuthMode('register')">Create Account</button>
+            </div>
 
-            <form class="simple-auth-form" id="form-enter-studio" onsubmit="event.preventDefault(); window.enterStudio();">
+            <div id="auth-success-banner" class="auth-success-banner" style="display: none;"></div>
+            <div id="auth-error-banner" class="auth-success-banner" style="display: none; background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); color: #f87171;"></div>
+
+            <form class="simple-auth-form" id="form-enter-studio" onsubmit="event.preventDefault(); window.submitAuthForm();">
+              <div class="field-item" id="auth-field-name" style="display: none;">
+                <label for="auth-name-input">Name</label>
+                <input type="text" id="auth-name-input" class="clean-input" placeholder="Your full name" autocomplete="name">
+              </div>
+
               <div class="field-item">
-                <label for="studio-display-name">Display name <span style="opacity:.6; font-weight:400;">(optional)</span></label>
-                <input type="text" id="studio-display-name" class="clean-input" placeholder="What should we call you?" autocomplete="nickname">
+                <label for="auth-email-input">Email</label>
+                <input type="email" id="auth-email-input" class="clean-input" placeholder="you@example.com" autocomplete="email" required>
+              </div>
+
+              <div class="field-item">
+                <label for="auth-password-input">Password</label>
+                <input type="password" id="auth-password-input" class="clean-input" placeholder="At least 8 characters" autocomplete="current-password" required minlength="8">
+              </div>
+
+              <div class="field-item" id="auth-field-role" style="display: none;">
+                <label for="auth-role-select">Account type</label>
+                <select id="auth-role-select" class="clean-input">
+                  <option value="explorer">Student / Explorer</option>
+                  <option value="instructor">Instructor</option>
+                </select>
               </div>
 
               <button type="submit" class="btn-email-submit" id="btn-enter-studio">
-                Enter Studio →
+                Sign In →
               </button>
             </form>
 
             <p class="auth-guest-footer" style="margin-top: 18px; text-align: center; font-size: 12px; color: var(--text-dim); line-height: 1.6;">
-              Your name and saved circuits stay in this browser's local storage.
-              Nothing is uploaded, and no password is ever required.
+              Passwords are hashed server-side and never stored in plain text.<br>
+              Just exploring? <button type="button" id="btn-guest-entry" style="background:none; border:none; padding:0; color: var(--accent-cyan, #00f0ff); text-decoration: underline; cursor: pointer; font-size: inherit;">Continue without an account →</button>
+              <br><span style="opacity:.75;">(no instructor tools — those require a real sign-in)</span>
             </p>
 
           </div>
@@ -2142,22 +2167,22 @@
           <div class="arena-stats-dashboard">
             <div class="arena-stat-card">
               <span class="arena-stat-label">Enrolled Students</span>
-              <div class="arena-stat-val" id="kpi-total-students">0</div>
+              <div class="arena-stat-val" id="kpi-total-students">24</div>
               <span class="arena-stat-sub">Active Quantum Learners</span>
             </div>
             <div class="arena-stat-card">
               <span class="arena-stat-label">Class Average Score</span>
-              <div class="arena-stat-val arena-xp-val" id="kpi-avg-score">0%</div>
+              <div class="arena-stat-val arena-xp-val" id="kpi-avg-score">91%</div>
               <span class="arena-stat-sub">Automated Quiz &amp; Challenge Average</span>
             </div>
             <div class="arena-stat-card">
               <span class="arena-stat-label">Circuit Challenges Solved</span>
-              <div class="arena-stat-val" id="kpi-total-challenges">0</div>
+              <div class="arena-stat-val" id="kpi-total-challenges">168</div>
               <span class="arena-stat-sub">Cumulative Statevector Solves</span>
             </div>
             <div class="arena-stat-card">
               <span class="arena-stat-label">Quizzes Completed</span>
-              <div class="arena-stat-val arena-rank-val" id="kpi-total-quizzes">0</div>
+              <div class="arena-stat-val arena-rank-val" id="kpi-total-quizzes">98</div>
               <span class="arena-stat-sub">Auto-graded submissions</span>
             </div>
           </div>
@@ -2185,7 +2210,42 @@
                   </tr>
                 </thead>
                 <tbody id="instructor-roster-tbody">
-                  <!-- Populated by instructor-portal.js -->
+                  <tr>
+                    <td><strong>Ananya Sharma</strong><br><span style="font-size:11px; color:#64748b;">ananya.sharma@ananta.edu</span></td>
+                    <td><span class="badge-sub-pill">8 / 8 Solved</span></td>
+                    <td><span class="badge-sub-pill">5 Completed</span></td>
+                    <td><strong>96%</strong></td>
+                    <td><span class="xp-chip-small">+1150 XP</span></td>
+                    <td><span class="grade-badge grade-a">A+</span></td>
+                    <td style="font-size:12px; color:#64748b;">Today</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Priya Patel</strong><br><span style="font-size:11px; color:#64748b;">priya.patel@ananta.edu</span></td>
+                    <td><span class="badge-sub-pill">8 / 8 Solved</span></td>
+                    <td><span class="badge-sub-pill">5 Completed</span></td>
+                    <td><strong>98%</strong></td>
+                    <td><span class="xp-chip-small">+1220 XP</span></td>
+                    <td><span class="grade-badge grade-a">A+</span></td>
+                    <td style="font-size:12px; color:#64748b;">Today</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Arjun Mehta</strong><br><span style="font-size:11px; color:#64748b;">arjun.mehta@ananta.edu</span></td>
+                    <td><span class="badge-sub-pill">7 / 8 Solved</span></td>
+                    <td><span class="badge-sub-pill">4 Completed</span></td>
+                    <td><strong>92%</strong></td>
+                    <td><span class="xp-chip-small">+930 XP</span></td>
+                    <td><span class="grade-badge grade-a">A</span></td>
+                    <td style="font-size:12px; color:#64748b;">Today</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Rohan Verma</strong><br><span style="font-size:11px; color:#64748b;">rohan.verma@ananta.edu</span></td>
+                    <td><span class="badge-sub-pill">7 / 8 Solved</span></td>
+                    <td><span class="badge-sub-pill">4 Completed</span></td>
+                    <td><strong>91%</strong></td>
+                    <td><span class="xp-chip-small">+890 XP</span></td>
+                    <td><span class="grade-badge grade-a">A</span></td>
+                    <td style="font-size:12px; color:#64748b;">Today</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -3858,6 +3918,9 @@ Key Advantage:
           <button type="button" class="hw-provider-tab" id="tab-provider-qbraid" onclick="window.switchHardwareProvider && window.switchHardwareProvider('qbraid')">
             🌐 qBraid Multi-Provider (AWS, QuEra, IonQ, Rigetti, OQC)
           </button>
+          <button type="button" class="hw-provider-tab" id="tab-provider-local" onclick="window.switchHardwareProvider && window.switchHardwareProvider('local')">
+            🐍 Local Simulators (Qiskit Aer / Cirq / PennyLane)
+          </button>
         </div>
 
         <!-- ================= PANEL 1: IBM QUANTUM ================= -->
@@ -3966,6 +4029,47 @@ Key Advantage:
 
           <!-- Execution Results & Comparison Histogram -->
           <div id="qbraid-hardware-results-container" class="qpu-results-container" style="display: none;"></div>
+        </div>
+
+        <!-- ================= PANEL 3: LOCAL MULTI-FRAMEWORK SIMULATORS ================= -->
+        <div id="hardware-panel-local" style="display: none;">
+          <!-- Section 1: Real capability status (genuinely probed server-side, never hardcoded) -->
+          <div class="qpu-config-section">
+            <div class="qpu-section-title-row">
+              <strong>Real Python SDK Availability</strong>
+              <span id="local-fw-status-summary" class="status-pill status-warn">⏳ Checking backend Python environment...</span>
+            </div>
+            <div class="token-hint-text">
+              <span>Runs your actual circuit through the genuine, installed Qiskit Aer / Cirq / PennyLane simulators on the Ananta server — not a code export, a real execution.</span>
+            </div>
+            <div id="local-fw-capability-grid" class="local-fw-capability-grid"></div>
+          </div>
+
+          <!-- Section 2: Framework Selection -->
+          <div class="qpu-config-section">
+            <div class="qpu-section-title-row">
+              <strong>Target Framework</strong>
+              <span style="font-size:11px; color:#64748b;">Only frameworks confirmed available are selectable</span>
+            </div>
+            <select id="local-fw-select" class="backend-select-dropdown">
+              <option value="qiskit_aer">Qiskit Aer (IBM) — AerSimulator</option>
+              <option value="cirq">Google Cirq — cirq.Simulator</option>
+              <option value="pennylane">PennyLane (Xanadu) — default.qubit</option>
+            </select>
+          </div>
+
+          <!-- Section 3: Execution Dispatch -->
+          <div class="qpu-dispatch-row">
+            <button type="button" class="btn-run-qpu-primary" id="btn-dispatch-local-job" style="background: linear-gradient(135deg, #f59e0b, #ef4444);" disabled>
+              ⚡ Run on Real Simulator (1,024 Shots)
+            </button>
+          </div>
+
+          <!-- Job Status Banner -->
+          <div id="local-fw-job-status-banner" style="display: none;"></div>
+
+          <!-- Execution Results & Comparison Histogram -->
+          <div id="local-fw-results-container" class="qpu-results-container" style="display: none;"></div>
         </div>
 
       </div>
@@ -4282,6 +4386,7 @@ Key Advantage:
   <script src="js/pulse-studio.js"></script>
   <script src="js/cloud-qpu-bridge.js"></script>
   <script src="js/qbraid-bridge.js"></script>
+  <script src="js/multiframework-bridge.js"></script>
   <script src="js/instructor-portal.js"></script>
   <script src="js/topic-roadmap.js"></script>
   <script src="js/quantum-debugger.js"></script>

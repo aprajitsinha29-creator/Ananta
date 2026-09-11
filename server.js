@@ -59,6 +59,12 @@ let IBM_QUANTUM_TOKEN = process.env.IBM_QUANTUM_TOKEN || process.env.IBM_API_KEY
 const qbraidClient = require('./ananta-backend/utils/qbraidClient');
 let QBRAID_API_KEY = process.env.QBRAID_API_KEY || process.env.QBRAID_TOKEN || '';
 
+// Real Multi-Framework Local Execution Bridge (Qiskit Aer / Cirq / PennyLane)
+const multiFrameworkClient = require('./ananta-backend/utils/multiFrameworkClient');
+
+// Real Authentication Service (scrypt password hashing + signed sessions)
+const authService = require('./ananta-backend/utils/authService');
+
 // Assessment & Instructor Subsystem
 const quizEngine = require('./ananta-backend/utils/quizEngine');
 const instructorStorage = require('./ananta-backend/utils/instructorStorage');
@@ -204,6 +210,68 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ================= API ROUTES =================
+
+  // ================= 0. AUTHENTICATION (real accounts, not a display name) =================
+  // Passwords are scrypt-hashed, sessions are HMAC-signed tokens verified
+  // server-side on every protected instructor request (see section 11).
+
+  // 0a. POST /api/auth/register
+  if (pathname === '/api/auth/register' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const result = authService.registerUser(body || {});
+      sendJson(res, 201, { success: true, ...result });
+      logTransaction('POST', pathname, 201, Date.now() - reqStart, { email: result.user.email });
+    } catch (err) {
+      const status = err.statusCode || 400;
+      sendJson(res, status, { success: false, error: err.message });
+      logTransaction('POST', pathname, status, Date.now() - reqStart, { error: err.message });
+    }
+    return;
+  }
+
+  // 0b. POST /api/auth/login
+  if (pathname === '/api/auth/login' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const result = authService.loginUser(body || {});
+      sendJson(res, 200, { success: true, ...result });
+      logTransaction('POST', pathname, 200, Date.now() - reqStart, { email: result.user.email });
+    } catch (err) {
+      const status = err.statusCode || 401;
+      sendJson(res, status, { success: false, error: err.message });
+      logTransaction('POST', pathname, status, Date.now() - reqStart, { error: err.message });
+    }
+    return;
+  }
+
+  // 0c. POST /api/auth/logout
+  if (pathname === '/api/auth/logout' && req.method === 'POST') {
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+    const revoked = authService.revokeSessionToken(token);
+    sendJson(res, 200, { success: true, revoked });
+    logTransaction('POST', pathname, 200, Date.now() - reqStart, { revoked });
+    return;
+  }
+
+  // 0d. GET /api/auth/me (session-restore / verify)
+  if (pathname === '/api/auth/me' && req.method === 'GET') {
+    const check = authService.requireSession(req.headers['authorization']);
+    if (!check.ok) {
+      sendJson(res, check.statusCode, { success: false, error: check.error });
+      logTransaction('GET', pathname, check.statusCode, Date.now() - reqStart, { error: check.error });
+      return;
+    }
+    const user = authService.getUserById(check.session.uid);
+    if (!user) {
+      sendJson(res, 404, { success: false, error: 'Account no longer exists' });
+      logTransaction('GET', pathname, 404, Date.now() - reqStart, {});
+      return;
+    }
+    sendJson(res, 200, { success: true, user });
+    logTransaction('GET', pathname, 200, Date.now() - reqStart, { uid: user.id });
+    return;
+  }
 
   // Dedicated Multi-task Multi-Provider AI Endpoint (/api/gemini, /api/ai, /api/grok, /api/ai/tutor)
   if (pathname === '/api/gemini' || pathname === '/api/ai' || pathname === '/api/grok' || pathname === '/api/ai/tutor') {
@@ -928,6 +996,49 @@ User Question: "${message}"`;
     return;
   }
 
+  // ================= 9e. REAL MULTI-FRAMEWORK LOCAL EXECUTION =================
+  // Genuinely runs the circuit on an installed Qiskit Aer / Cirq / PennyLane
+  // via a persistent Python worker process (ananta-backend/utils/multiFrameworkClient.js).
+  // Never fabricates results: if a framework/interpreter isn't available,
+  // that is reported honestly instead of silently substituting fake data.
+
+  // 9e-i. GET /api/multiframework/status (real capability probe, not a hardcoded list)
+  if (pathname === '/api/multiframework/status' && req.method === 'GET') {
+    try {
+      const probe = await multiFrameworkClient.probeFrameworks(['qiskit_aer', 'cirq', 'pennylane']);
+      sendJson(res, 200, probe);
+      logTransaction('GET', pathname, 200, Date.now() - reqStart, {
+        available: Object.entries(probe.frameworks || {}).filter(([, v]) => v.available).map(([k]) => k)
+      });
+    } catch (err) {
+      sendJson(res, 503, { success: false, error: err.message });
+      logTransaction('GET', pathname, 503, Date.now() - reqStart, { error: err.message });
+    }
+    return;
+  }
+
+  // 9e-ii. POST /api/multiframework/run (real circuit execution)
+  if (pathname === '/api/multiframework/run' && req.method === 'POST') {
+    try {
+      const body = await parseRequestBody(req);
+      const { framework, qasm, numQubits, shots = 1024 } = body || {};
+      if (!framework || !qasm || !numQubits) {
+        sendJson(res, 400, { success: false, error: 'framework, qasm, and numQubits are required' });
+        logTransaction('POST', pathname, 400, Date.now() - reqStart, { error: 'missing fields' });
+        return;
+      }
+      const result = await multiFrameworkClient.runOnFramework({ framework, qasm, numQubits, shots });
+      sendJson(res, result.success ? 200 : 502, result);
+      logTransaction('POST', pathname, result.success ? 200 : 502, Date.now() - reqStart, {
+        framework, numQubits, shots, success: result.success
+      });
+    } catch (err) {
+      sendJson(res, 503, { success: false, error: err.message });
+      logTransaction('POST', pathname, 503, Date.now() - reqStart, { error: err.message });
+    }
+    return;
+  }
+
   // ================= 10. ASSESSMENT & QUIZZES ENDPOINTS =================
 
   // 10a. GET /api/quizzes (Catalog & Question Session Generation)
@@ -1021,6 +1132,23 @@ User Question: "${message}"`;
     } catch (err) {
       sendJson(res, 500, { success: false, error: err.message });
       logTransaction('POST', pathname, 500, Date.now() - reqStart, { error: err.message });
+      return;
+    }
+  }
+
+  // Instructor-only routes below all require a valid signed session with
+  // role='instructor' - verified server-side, not trusted from the client.
+  const isInstructorRoute = pathname === '/api/instructor/cohorts'
+    || (pathname.startsWith('/api/instructor/cohort/') && pathname.endsWith('/students'))
+    || pathname === '/api/instructor/analytics'
+    || pathname === '/api/instructor/assignments'
+    || pathname === '/api/instructor/export-gradebook';
+
+  if (isInstructorRoute) {
+    const authCheck = authService.requireRole(req.headers['authorization'], 'instructor');
+    if (!authCheck.ok) {
+      sendJson(res, authCheck.statusCode, { success: false, error: authCheck.error });
+      logTransaction(req.method, pathname, authCheck.statusCode, Date.now() - reqStart, { error: authCheck.error });
       return;
     }
   }

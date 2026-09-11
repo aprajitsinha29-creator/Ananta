@@ -118,6 +118,12 @@ document.addEventListener('DOMContentLoaded', () => {
     window.qbraidBridge = qbraidBridge;
   }
 
+  let localFrameworkBridge = null;
+  if (window.LocalFrameworkBridge) {
+    localFrameworkBridge = new window.LocalFrameworkBridge(engine, circuitUI);
+    window.localFrameworkBridge = localFrameworkBridge;
+  }
+
   let instructorPortal = null;
   if (window.InstructorPortal) {
     instructorPortal = new window.InstructorPortal();
@@ -125,23 +131,26 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   window.switchHardwareProvider = function(provider) {
-    const tabIbm = document.getElementById('tab-provider-ibm');
-    const tabQbraid = document.getElementById('tab-provider-qbraid');
-    const panelIbm = document.getElementById('hardware-panel-ibm');
-    const panelQbraid = document.getElementById('hardware-panel-qbraid');
-    if (provider === 'qbraid') {
-      if (tabQbraid) tabQbraid.classList.add('active');
-      if (tabIbm) tabIbm.classList.remove('active');
-      if (panelQbraid) panelQbraid.style.display = 'block';
-      if (panelIbm) panelIbm.style.display = 'none';
-      if (window.qbraidBridge) window.qbraidBridge.updateDeviceTelemetry();
-    } else {
-      if (tabIbm) tabIbm.classList.add('active');
-      if (tabQbraid) tabQbraid.classList.remove('active');
-      if (panelIbm) panelIbm.style.display = 'block';
-      if (panelQbraid) panelQbraid.style.display = 'none';
-      if (window.cloudQPUBridge) window.cloudQPUBridge.updateDeviceTelemetry();
-    }
+    const tabs = {
+      ibm: document.getElementById('tab-provider-ibm'),
+      qbraid: document.getElementById('tab-provider-qbraid'),
+      local: document.getElementById('tab-provider-local')
+    };
+    const panels = {
+      ibm: document.getElementById('hardware-panel-ibm'),
+      qbraid: document.getElementById('hardware-panel-qbraid'),
+      local: document.getElementById('hardware-panel-local')
+    };
+    const target = tabs[provider] ? provider : 'ibm';
+
+    Object.keys(tabs).forEach((key) => {
+      if (tabs[key]) tabs[key].classList.toggle('active', key === target);
+      if (panels[key]) panels[key].style.display = key === target ? 'block' : 'none';
+    });
+
+    if (target === 'qbraid' && window.qbraidBridge) window.qbraidBridge.updateDeviceTelemetry();
+    else if (target === 'local' && window.localFrameworkBridge) window.localFrameworkBridge.refreshStatus();
+    else if (target === 'ibm' && window.cloudQPUBridge) window.cloudQPUBridge.updateDeviceTelemetry();
   };
 
   // 4 Killer Differentiating Studios
@@ -535,7 +544,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // 4. Authentication & Google Login Flow
+  // 4. Real Authentication (scrypt-hashed passwords, HMAC-signed sessions,
+  //    verified server-side in ananta-backend/utils/authService.js - see
+  //    /api/auth/register, /api/auth/login, /api/auth/me, /api/auth/logout)
   // ==========================================
   // Privacy safeguard: automatically purge legacy hardcoded account from client localStorage
   try {
@@ -544,6 +555,34 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.removeItem('ananta_user');
     }
   } catch (e) {}
+
+  const SESSION_TOKEN_KEY = 'ananta_session_token';
+  const SESSION_USER_KEY = 'ananta_user';
+
+  // Shared helper other modules (instructor-portal.js, etc) use to attach
+  // real Authorization headers to protected API calls.
+  window.AnantaAuth = {
+    getToken() {
+      try { return localStorage.getItem(SESSION_TOKEN_KEY) || ''; } catch (e) { return ''; }
+    },
+    getUser() {
+      try {
+        const raw = localStorage.getItem(SESSION_USER_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    },
+    isLoggedIn() {
+      return Boolean(window.AnantaAuth.getToken());
+    },
+    isInstructor() {
+      const u = window.AnantaAuth.getUser();
+      return Boolean(window.AnantaAuth.getToken() && u && u.role === 'instructor');
+    },
+    authHeaders() {
+      const token = window.AnantaAuth.getToken();
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+  };
 
   function getAuthRedirectTarget() {
     try {
@@ -566,20 +605,26 @@ document.addEventListener('DOMContentLoaded', () => {
     return 'overview';
   }
 
-  function completeLogin(userObj, targetTab) {
-    if (!userObj.loggedInAt) userObj.loggedInAt = new Date().toISOString();
+  // token is null for the honest, no-account "guest" mode (see
+  // window.enterAsGuest below) - a guest's localStorage user object is
+  // purely a display label and carries zero server privilege, since every
+  // protected endpoint verifies the *signed token*, never the client's
+  // claimed name/role.
+  function completeLogin(userObj, token, targetTab) {
     if (!userObj.avatar) userObj.avatar = userObj.name ? userObj.name.charAt(0).toUpperCase() : 'Q';
-    if (!userObj.role) userObj.role = 'Quantum Engineer';
-    if (!userObj.roleType) userObj.roleType = 'iam';
+    userObj.loggedInAt = new Date().toISOString();
 
-    localStorage.setItem('ananta_user', JSON.stringify(userObj));
+    localStorage.setItem(SESSION_USER_KEY, JSON.stringify(userObj));
+    if (token) {
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+    }
     updateNavUser();
 
-    // Render session card if on login view
-    if (window.renderLoginSessionState) window.renderLoginSessionState();
-
     const dest = targetTab || getAuthRedirectTarget();
-    showAuthSuccess(`✓ Authenticated as ${userObj.name} (${userObj.role}). Entering Studio...`);
+    const roleLabel = token ? userObj.role : 'guest — no account';
+    showAuthSuccess(`✓ Signed in as ${userObj.name} (${roleLabel}). Entering Studio...`);
 
     setTimeout(() => {
       switchView(dest);
@@ -627,92 +672,159 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.updateNavUser = updateNavUser;
 
-  // Render AWS Active Session state on #view-login if user is already authenticated
-  // Ananta has no accounts, sessions or auth backend. What used to live here
-  // was a simulated Google picker, an email/password form, a client-generated
-  // "OTP", and one-click "Root Administrator" / "Researcher" role presets —
-  // none of which verified anything. All any of it did was write a user object
-  // to localStorage. That is now what it honestly is: a local display name.
-  const SESSION_KEY = 'ananta_user';
-
+  // If the login view is reached while already signed in, there is nothing
+  // to show - just carry the user on to their destination.
   window.renderLoginSessionState = () => {
-    const sessionCard = document.getElementById('auth-active-session-box');
-    const entryForm = document.getElementById('form-enter-studio');
-    const userJson = localStorage.getItem(SESSION_KEY);
-
-    if (userJson && sessionCard) {
-      try {
-        const user = JSON.parse(userJson);
-        const set = (id, value) => {
-          const el = document.getElementById(id);
-          if (el) el.textContent = value;
-        };
-        set('session-user-name', user.name || 'Quantum Explorer');
-        set('session-user-email', user.email || 'Local session — no account');
-        set('session-user-role', user.role || 'Explorer');
-        set('session-user-avatar', user.avatar || (user.name ? user.name.charAt(0).toUpperCase() : 'Q'));
-
-        const timeEl = document.getElementById('session-login-time');
-        if (timeEl) {
-          const date = user.loggedInAt ? new Date(user.loggedInAt) : new Date();
-          timeEl.textContent = 'Active since ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        sessionCard.style.display = 'block';
-        if (entryForm) entryForm.style.display = 'none';
-        return;
-      } catch (e) {
-        console.warn('[Ananta] Could not read local session:', e.message);
-      }
+    if (window.AnantaAuth.isLoggedIn()) {
+      switchView(getAuthRedirectTarget());
     }
-
-    if (sessionCard) sessionCard.style.display = 'none';
-    if (entryForm) entryForm.style.display = 'flex';
   };
 
-  // "Switch" simply clears the stored name and shows the entry field again.
-  window.switchAccountDirect = () => {
-    const sessionCard = document.getElementById('auth-active-session-box');
-    const entryForm = document.getElementById('form-enter-studio');
-    if (sessionCard) sessionCard.style.display = 'none';
-    if (entryForm) entryForm.style.display = 'flex';
+  let authMode = 'login';
+  window.setAuthMode = (mode) => {
+    authMode = mode === 'register' ? 'register' : 'login';
+    const isRegister = authMode === 'register';
+
+    const btnLogin = document.getElementById('btn-auth-mode-login');
+    const btnRegister = document.getElementById('btn-auth-mode-register');
+    if (btnLogin) btnLogin.classList.toggle('active', !isRegister);
+    if (btnRegister) btnRegister.classList.toggle('active', isRegister);
+
+    const fieldName = document.getElementById('auth-field-name');
+    const fieldRole = document.getElementById('auth-field-role');
+    if (fieldName) fieldName.style.display = isRegister ? 'block' : 'none';
+    if (fieldRole) fieldRole.style.display = isRegister ? 'block' : 'none';
+
+    const submitBtn = document.getElementById('btn-enter-studio');
+    if (submitBtn) submitBtn.textContent = isRegister ? 'Create Account →' : 'Sign In →';
+
+    const title = document.getElementById('auth-welcome-title');
+    const desc = document.getElementById('auth-welcome-desc');
+    if (title) title.textContent = isRegister ? 'Create your Quantum Studio account' : 'Sign in to the Quantum Studio';
+    if (desc) desc.textContent = isRegister
+      ? 'Pick "Instructor" if you need cohort management, gradebooks, and assignment dispatch.'
+      : 'Real accounts, verified server-side. Instructor-only tools require signing in with the instructor role.';
+
+    const passwordInput = document.getElementById('auth-password-input');
+    if (passwordInput) passwordInput.setAttribute('autocomplete', isRegister ? 'new-password' : 'current-password');
+
+    hideAuthBanners();
   };
 
-  window.enterStudio = () => {
-    const nameInput = document.getElementById('studio-display-name');
-    const typed = nameInput ? nameInput.value.trim() : '';
-    const name = typed || 'Quantum Explorer';
-
-    completeLogin({
-      name,
-      email: 'Local session — no account',
-      role: 'Explorer',
-      roleType: 'local',
-      tier: 'Full Studio Access',
-      avatar: name.charAt(0).toUpperCase(),
-      provider: 'local'
-    });
-  };
-
-  window.logoutUser = () => {
-    localStorage.removeItem(SESSION_KEY);
-    updateNavUser();
-    if (window.renderLoginSessionState) window.renderLoginSessionState();
-    switchView('login');
-    showAuthSuccess('Local session cleared.');
-  };
+  function hideAuthBanners() {
+    const succ = document.getElementById('auth-success-banner');
+    const err = document.getElementById('auth-error-banner');
+    if (succ) succ.style.display = 'none';
+    if (err) err.style.display = 'none';
+  }
 
   function showAuthSuccess(msg) {
     const succBanner = document.getElementById('auth-success-banner');
+    const errBanner = document.getElementById('auth-error-banner');
+    if (errBanner) errBanner.style.display = 'none';
     if (succBanner) {
       succBanner.textContent = msg;
       succBanner.style.display = 'block';
     }
   }
 
+  function showAuthError(msg) {
+    const succBanner = document.getElementById('auth-success-banner');
+    const errBanner = document.getElementById('auth-error-banner');
+    if (succBanner) succBanner.style.display = 'none';
+    if (errBanner) {
+      errBanner.textContent = msg;
+      errBanner.style.display = 'block';
+    }
+  }
+
+  window.submitAuthForm = async () => {
+    const submitBtn = document.getElementById('btn-enter-studio');
+    const name = (document.getElementById('auth-name-input') || {}).value || '';
+    const email = (document.getElementById('auth-email-input') || {}).value || '';
+    const password = (document.getElementById('auth-password-input') || {}).value || '';
+    const role = (document.getElementById('auth-role-select') || {}).value || 'explorer';
+
+    hideAuthBanners();
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Please wait...'; }
+
+    try {
+      const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const payload = authMode === 'register' ? { name, email, password, role } : { email, password };
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      completeLogin(data.user, data.token);
+    } catch (err) {
+      showAuthError(`✕ ${err.message}`);
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = authMode === 'register' ? 'Create Account →' : 'Sign In →';
+      }
+    }
+  };
+
+  // Honest, no-account convenience mode: a purely local display name with no
+  // signed token, so it carries zero server-side privilege - every
+  // protected endpoint (e.g. /api/instructor/*) verifies the real signed
+  // session, never whatever a guest's local object claims.
+  window.enterAsGuest = () => {
+    completeLogin({
+      name: 'Quantum Explorer',
+      email: '',
+      role: 'guest'
+    }, null);
+  };
+
+  window.logoutUser = async () => {
+    const token = window.AnantaAuth.getToken();
+    if (token) {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      } catch (e) {}
+    }
+    localStorage.removeItem(SESSION_TOKEN_KEY);
+    localStorage.removeItem(SESSION_USER_KEY);
+    updateNavUser();
+    switchView('login');
+    showAuthSuccess('Signed out.');
+  };
+
+  // On load, if a session token is cached, verify it's still valid
+  // server-side (it may have expired or been revoked) and refresh the
+  // cached user - don't just trust what's sitting in localStorage.
+  (async () => {
+    const token = window.AnantaAuth.getToken();
+    if (!token) return;
+    try {
+      const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        localStorage.setItem(SESSION_USER_KEY, JSON.stringify(data.user));
+        updateNavUser();
+      } else {
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+        localStorage.removeItem(SESSION_USER_KEY);
+        updateNavUser();
+      }
+    } catch (e) {
+      // Network hiccup - keep the cached session rather than logging the user
+      // out over a transient failure; it'll be re-checked on next load.
+    }
+  })();
+
   const guestEntry = document.getElementById('btn-guest-entry');
   if (guestEntry) {
-    guestEntry.addEventListener('click', () => window.enterStudio());
+    guestEntry.addEventListener('click', () => window.enterAsGuest());
   }
 
 

@@ -185,9 +185,10 @@ class QBraidBridge {
     }
 
     try {
-      const qasm = this.engine && typeof this.engine.toOpenQASM === 'function'
-        ? this.engine.toOpenQASM(this.circuitUI ? this.circuitUI.grid : null)
-        : 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\ncreg c[3];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;\n';
+      if (!this.engine || typeof this.engine.toExecutableQASM !== 'function' || !this.circuitUI) {
+        throw new Error('Circuit engine not ready - cannot generate OpenQASM for the current circuit.');
+      }
+      const qasm = this.engine.toExecutableQASM(this.circuitUI.grid);
 
       const numQubits = this.circuitUI ? this.circuitUI.numQubits : 3;
       const idealProbabilities = this.engine && typeof this.engine.getProbabilities === 'function'

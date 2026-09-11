@@ -2788,6 +2788,34 @@ button.nav-dropdown-trigger.active {
   margin-bottom: 14px;
 }
 
+.auth-mode-toggle {
+  display: flex;
+  gap: 6px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.auth-mode-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-mode-btn.active {
+  background: rgba(0, 240, 255, 0.14);
+  color: #00f0ff;
+}
+
 /* Password Input Toggle */
 .password-input-wrapper {
   position: relative;
@@ -14942,6 +14970,43 @@ input:checked + .slider-round:before {
   background: rgba(239, 68, 68, 0.15);
   color: #f87171;
   border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.local-fw-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.local-fw-capability-card {
+  background: #060911;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.local-fw-capability-card.available {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.local-fw-capability-card.unavailable {
+  border-color: rgba(239, 68, 68, 0.3);
+  opacity: 0.75;
+}
+
+.local-fw-capability-card .fw-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.local-fw-capability-card .fw-detail {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: #94a3b8;
+  margin-top: 4px;
+  word-break: break-word;
 }
 
 .token-input-row {

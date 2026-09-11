@@ -17,3 +17,8 @@ node_modules/
 __pycache__/
 *.pyc
 *.db
+*.pdf
+
+# Real user accounts & session-signing secret - never commit real credentials
+ananta-backend/data/users.json
+ananta-backend/data/.session_secret

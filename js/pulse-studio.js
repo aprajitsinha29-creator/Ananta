@@ -43,14 +43,16 @@ class MicrowavePulseStudio {
     this.stateP1El = document.getElementById('pulse-state-p1-badge');
   }
 
-  // Compute envelope value Omega(t) for a given normalized time t in [0, duration]
-  getEnvelope(t) {
-    const tg = this.duration;
+  // Compute envelope value Omega(t) for a given normalized time t in [0, duration].
+  // duration/amplitude default to the instance's Rabi-tab settings, but callers
+  // building a multi-pulse sequence (Ramsey/Hahn) pass a specific segment's own values.
+  getEnvelope(t, duration = this.duration, amplitude = this.amplitude) {
+    const tg = duration;
     if (t < 0 || t > tg) return { I: 0, Q: 0 };
 
     let iEnv = 0;
     let qEnv = 0;
-    const A = this.amplitude;
+    const A = amplitude;
 
     if (this.pulseShape === 'gaussian') {
       const sigma = tg / 4.0;
@@ -70,6 +72,61 @@ class MicrowavePulseStudio {
     }
 
     return { I: iEnv, Q: qEnv };
+  }
+
+  // Idealized pulse duration (ns) to sweep the given rotation angle at the
+  // current drive amplitude: t = angle / Omega_rad_per_ns.
+  getIdealPulseDuration(angleFraction) {
+    const omegaRadPerNs = (this.amplitude * 2 * Math.PI) / 1000; // MHz -> rad/ns
+    const targetAngle = angleFraction * Math.PI;
+    return Math.max(2, targetAngle / Math.max(0.001, omegaRadPerNs));
+  }
+
+  // Build the actual pulse-sequence layout (segments + free-evolution gaps)
+  // for the active experiment, so the waveform panel reflects what's
+  // selected instead of always showing a single bare Rabi drive pulse.
+  // Gaps are schematic (real free-evolution time is microsecond-scale,
+  // 1000x the nanosecond-scale pulses, so a literal shared axis would
+  // render the pulses as invisible slivers) but pulse widths are real,
+  // amplitude-derived pi/2 and pi rotation times.
+  getPulseSequence() {
+    if (this.activeExperiment === 'ramsey') {
+      const tPiHalf = this.getIdealPulseDuration(0.5);
+      const gap = Math.max(18, tPiHalf * 4);
+      return {
+        segments: [
+          { start: 0, duration: tPiHalf, amplitude: this.amplitude, label: 'π/2' },
+          { start: tPiHalf + gap, duration: tPiHalf, amplitude: this.amplitude, label: 'π/2' }
+        ],
+        gaps: [{ start: tPiHalf, duration: gap, label: 'free evolution (τ)' }],
+        total: tPiHalf * 2 + gap
+      };
+    }
+
+    if (this.activeExperiment === 'hahn_echo') {
+      const tPiHalf = this.getIdealPulseDuration(0.5);
+      const tPi = this.getIdealPulseDuration(1.0);
+      const gap = Math.max(18, tPiHalf * 4);
+      return {
+        segments: [
+          { start: 0, duration: tPiHalf, amplitude: this.amplitude, label: 'π/2' },
+          { start: tPiHalf + gap, duration: tPi, amplitude: this.amplitude, label: 'π' },
+          { start: tPiHalf + gap + tPi + gap, duration: tPiHalf, amplitude: this.amplitude, label: 'π/2' }
+        ],
+        gaps: [
+          { start: tPiHalf, duration: gap, label: 'τ' },
+          { start: tPiHalf + gap + tPi, duration: gap, label: 'τ' }
+        ],
+        total: tPiHalf * 2 + tPi + gap * 2
+      };
+    }
+
+    // Rabi: a single continuous drive pulse
+    return {
+      segments: [{ start: 0, duration: this.duration, amplitude: this.amplitude, label: null }],
+      gaps: [],
+      total: this.duration
+    };
   }
 
   // Draw Pulse Envelope & Waveform Quadratures (I & Q channels)
@@ -95,46 +152,76 @@ class MicrowavePulseStudio {
     ctx.lineTo(w - pad.right, midY);
     ctx.stroke();
 
-    const steps = 120;
+    const seq = this.getPulseSequence();
+    const totalT = Math.max(1, seq.total);
     const maxAmp = Math.max(30, this.amplitude * 1.3);
+    const xAt = (t) => pad.left + (t / totalT) * plotW;
 
-    // 1. Draw In-Phase Channel (I Envelope - Cyan)
-    ctx.beginPath();
-    ctx.strokeStyle = '#8ab4f8';
-    ctx.lineWidth = 2.2;
-    for (let i = 0; i <= steps; i++) {
-      const t = (i / steps) * this.duration;
-      const env = this.getEnvelope(t);
-      const x = pad.left + (i / steps) * plotW;
-      const y = midY - (env.I / maxAmp) * (plotH / 2);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    // Free-evolution gap zones (Ramsey/Hahn echo), drawn behind the pulses
+    for (const gap of seq.gaps) {
+      const gx0 = xAt(gap.start);
+      const gx1 = xAt(gap.start + gap.duration);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+      ctx.setLineDash([3, 3]);
+      ctx.fillRect(gx0, pad.top, gx1 - gx0, plotH);
+      ctx.strokeRect(gx0, pad.top, gx1 - gx0, plotH);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#80868b';
+      ctx.font = '9px Roboto Mono';
+      ctx.textAlign = 'center';
+      ctx.fillText(gap.label, (gx0 + gx1) / 2, pad.top + plotH / 2 + 3);
     }
-    ctx.stroke();
+    ctx.textAlign = 'left';
 
-    // 2. Draw Quadrature Channel (Q DRAG Envelope - Pink)
-    if (this.pulseShape === 'drag') {
+    // Draw each pulse segment's I (and Q for DRAG) envelope at its own time offset
+    for (const seg of seq.segments) {
+      const steps = Math.max(20, Math.round((seg.duration / totalT) * 200));
+
       ctx.beginPath();
-      ctx.strokeStyle = '#d367c4';
-      ctx.lineWidth = 1.8;
-      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#8ab4f8';
+      ctx.lineWidth = 2.2;
       for (let i = 0; i <= steps; i++) {
-        const t = (i / steps) * this.duration;
-        const env = this.getEnvelope(t);
-        const x = pad.left + (i / steps) * plotW;
-        const y = midY - (env.Q / maxAmp) * (plotH / 2);
+        const tLocal = (i / steps) * seg.duration;
+        const env = this.getEnvelope(tLocal, seg.duration, seg.amplitude);
+        const x = xAt(seg.start + tLocal);
+        const y = midY - (env.I / maxAmp) * (plotH / 2);
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
-      ctx.setLineDash([]);
+
+      if (this.pulseShape === 'drag') {
+        ctx.beginPath();
+        ctx.strokeStyle = '#d367c4';
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 4]);
+        for (let i = 0; i <= steps; i++) {
+          const tLocal = (i / steps) * seg.duration;
+          const env = this.getEnvelope(tLocal, seg.duration, seg.amplitude);
+          const x = xAt(seg.start + tLocal);
+          const y = midY - (env.Q / maxAmp) * (plotH / 2);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      if (seg.label) {
+        ctx.fillStyle = '#c9d1d9';
+        ctx.font = '10px Roboto Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText(seg.label, xAt(seg.start + seg.duration / 2), pad.top - 6);
+        ctx.textAlign = 'left';
+      }
     }
 
     // Ticks & Labels
     ctx.fillStyle = '#80868b';
     ctx.font = '10px Roboto Mono';
     ctx.fillText('0 ns', pad.left, h - 10);
-    ctx.fillText(`${this.duration.toFixed(0)} ns`, w - pad.right - 30, h - 10);
+    ctx.fillText(`${totalT.toFixed(0)} ns`, w - pad.right - 30, h - 10);
     ctx.fillText(`+${this.amplitude.toFixed(0)} MHz`, 8, pad.top + 10);
     ctx.fillText(`-${this.amplitude.toFixed(0)} MHz`, 8, h - pad.bottom);
   }
@@ -169,12 +256,12 @@ class MicrowavePulseStudio {
       ctx.fillText(p, pad.left - 6, y + 4);
     }
 
-    const generalizedRabi = Math.sqrt(Math.pow(this.amplitude, 2) + Math.pow(this.detuning, 2));
-    if (this.rabiFreqEl) this.rabiFreqEl.textContent = `Ω_R = ${generalizedRabi.toFixed(1)} MHz`;
-
     const steps = 140;
 
     if (this.activeExperiment === 'rabi') {
+      const generalizedRabi = Math.sqrt(Math.pow(this.amplitude, 2) + Math.pow(this.detuning, 2));
+      if (this.rabiFreqEl) this.rabiFreqEl.textContent = `Ω_R = ${generalizedRabi.toFixed(1)} MHz`;
+
       // Rabi Oscillations: P(|1>) = (Omega / Omega_R)^2 * sin^2(Omega_R * t / 2) * exp(-t / T1)
       ctx.beginPath();
       ctx.strokeStyle = '#81c995';
@@ -213,6 +300,12 @@ class MicrowavePulseStudio {
 
     } else if (this.activeExperiment === 'ramsey') {
       // Ramsey Fringes: P(|1>) = 0.5 * (1 + cos(Delta * tau) * exp(-tau / T2*))
+      // T2* is physically capped at 2*T1 — relaxation alone destroys coherence,
+      // so a T2* slider value above that ceiling is unphysical and gets clamped.
+      const effectiveT2Star = Math.min(this.T2Star, 2 * this.T1);
+      if (this.rabiFreqEl) this.rabiFreqEl.textContent = `Δ = ${this.detuning.toFixed(1)} MHz`;
+      if (this.stateP1El) this.stateP1El.textContent = `T₂* (eff) = ${effectiveT2Star.toFixed(1)} µs`;
+
       ctx.beginPath();
       ctx.strokeStyle = '#fdd663';
       ctx.lineWidth = 2.4;
@@ -221,7 +314,7 @@ class MicrowavePulseStudio {
       for (let i = 0; i <= steps; i++) {
         const tau = (i / steps) * maxTau;
         const detuningRad = this.detuning * 2 * Math.PI; // MHz to rad/us
-        const decay = Math.exp(-tau / this.T2Star);
+        const decay = Math.exp(-tau / Math.max(0.01, effectiveT2Star));
         const p1 = 0.5 * (1.0 + Math.cos(detuningRad * tau) * decay);
 
         const x = pad.left + (i / steps) * plotW;
@@ -232,7 +325,13 @@ class MicrowavePulseStudio {
       ctx.stroke();
 
     } else if (this.activeExperiment === 'hahn_echo') {
-      // Hahn Spin Echo: refocused coherence with pure T2 envelope
+      // Hahn Spin Echo: the refocusing pi-pulse cancels static/quasi-static
+      // dephasing (hence no dependence on `detuning`), leaving a slower
+      // echo-limited T2 that is itself capped at 2*T1.
+      const t2Echo = Math.min(this.T2Star * 1.8, 2 * this.T1);
+      if (this.rabiFreqEl) this.rabiFreqEl.textContent = `T₂ (echo) = ${t2Echo.toFixed(1)} µs`;
+      if (this.stateP1El) this.stateP1El.textContent = `T₁ limit = ${(2 * this.T1).toFixed(1)} µs`;
+
       ctx.beginPath();
       ctx.strokeStyle = '#d367c4';
       ctx.lineWidth = 2.4;
@@ -240,8 +339,7 @@ class MicrowavePulseStudio {
       const maxTau = 80.0;
       for (let i = 0; i <= steps; i++) {
         const tau = (i / steps) * maxTau;
-        const pureT2 = this.T2Star * 1.8;
-        const decay = Math.exp(-Math.pow(tau / pureT2, 2));
+        const decay = Math.exp(-Math.pow(tau / Math.max(0.01, t2Echo), 2));
         const p1 = 0.5 * (1.0 + decay);
 
         const x = pad.left + (i / steps) * plotW;

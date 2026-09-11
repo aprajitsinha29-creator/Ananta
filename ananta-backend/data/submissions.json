@@ -26,16 +26,55 @@
     "submittedAt": "2026-09-09T12:53:16.946Z"
   },
   {
-    "id": "sub_1789131510010_szvf",
-    "studentId": "std_live_test",
-    "studentName": "Live Test Scholar",
+    "id": "sub_init_03",
+    "studentId": "std_priya_03",
+    "studentName": "Priya Patel",
     "cohortId": "cohort_qc101",
-    "assignmentId": "quiz_general",
+    "assignmentId": "asg_01_bell",
+    "type": "circuit",
+    "fidelity": 0.998,
+    "gateCount": 2,
+    "grade": 100,
+    "passed": true,
+    "submittedAt": "2026-09-09T14:15:00.000Z"
+  },
+  {
+    "id": "sub_init_04",
+    "studentId": "std_arjun_04",
+    "studentName": "Arjun Mehta",
+    "cohortId": "cohort_qc101",
+    "assignmentId": "asg_02_gates_quiz",
     "type": "quiz",
-    "score": 0,
-    "percentage": 0,
-    "passed": false,
-    "xpEarned": 0,
-    "submittedAt": "2026-09-11T12:58:30.011Z"
+    "score": 5,
+    "percentage": 100,
+    "passed": true,
+    "xpEarned": 150,
+    "submittedAt": "2026-09-10T10:20:00.000Z"
+  },
+  {
+    "id": "sub_init_05",
+    "studentId": "std_sneha_05",
+    "studentName": "Sneha Reddy",
+    "cohortId": "cohort_qc101",
+    "assignmentId": "asg_02_gates_quiz",
+    "type": "quiz",
+    "score": 4,
+    "percentage": 80,
+    "passed": true,
+    "xpEarned": 120,
+    "submittedAt": "2026-09-10T11:45:00.000Z"
+  },
+  {
+    "id": "sub_init_06",
+    "studentId": "std_pooja_11",
+    "studentName": "Pooja Iyer",
+    "cohortId": "cohort_qc101",
+    "assignmentId": "asg_01_bell",
+    "type": "circuit",
+    "fidelity": 1.000,
+    "gateCount": 2,
+    "grade": 100,
+    "passed": true,
+    "submittedAt": "2026-09-10T16:00:00.000Z"
   }
 ]
